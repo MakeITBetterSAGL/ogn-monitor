@@ -1,0 +1,17 @@
+[Unit]
+Description=OGN Monitor web dashboard
+After=ogn-parser.service
+Requires=ogn-parser.service
+
+[Service]
+Type=simple
+User=@USER@
+Group=@GROUP@
+WorkingDirectory=@INSTALL_DIR@
+EnvironmentFile=@INSTALL_DIR@/.env
+ExecStart=@INSTALL_DIR@/.venv/bin/gunicorn --workers 1 --threads 4 --bind 0.0.0.0:5000 app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

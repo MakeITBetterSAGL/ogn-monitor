@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OGN Monitor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20260807-map-style1') }}">
+</head>
+<body>
+    <main class="container">
+        <header class="page-header">
+            <div>
+                <h1>OGN Monitor</h1>
+                <p class="subtitle">{{ station.name }}</p>
+            </div>
+            <div id="update-state" class="update-state" aria-live="polite">Connecting…</div>
+        </header>
+
+        <section class="stats-grid" aria-label="Live receiver statistics">
+            <article class="card stat-card">
+                <div class="label">Receiver status</div>
+                <span id="receiver-status" class="status {{ 'online' if stats.active_traffic else ('idle' if stats.receiver_online else 'offline') }}">
+                    {{ 'Online' if stats.active_traffic else ('No active traffic right now' if stats.receiver_online else 'Receiver offline') }}
+                </span>
+            </article>
+            <article class="card stat-card">
+                <div class="label">Packets received</div>
+                <div id="total-packets" class="value">{{ stats.total_packets }}</div>
+            </article>
+            <article class="card stat-card">
+                <div class="label">Aircraft today</div>
+                <div id="aircraft-today" class="value">{{ stats.aircraft_today }}</div>
+            </article>
+            <article class="card stat-card">
+                <div class="label">Active aircraft</div>
+                <div id="active-aircraft" class="value">{{ stats.active_aircraft }}</div>
+            </article>
+            <article class="card stat-card">
+                <div class="label">Last packet</div>
+                <div id="last-packet" class="value value-small">
+                    {{ (stats.seconds_since_last|string + ' s ago') if stats.seconds_since_last is not none else 'No packets' }}
+                </div>
+            </article>
+        </section>
+
+        <section class="card table-card">
+            <div class="section-heading">
+                <div class="title-with-count">
+                    <h2>Active aircraft</h2>
+                    <span id="aircraft-count" class="count-badge">0</span>
+                </div>
+                <div class="table-controls">
+                    <label class="search-field">
+                        <span class="visually-hidden">Search aircraft ID</span>
+                        <input id="aircraft-search" type="search" placeholder="Search aircraft ID" autocomplete="off">
+                    </label>
+                    <div id="protocol-filters" class="protocol-filters" aria-label="Protocol filters">
+                        <button type="button" class="filter-button active" data-protocol="ALL">All</button>
+                        <button type="button" class="filter-button" data-protocol="FLARM">FLARM</button>
+                        <button type="button" class="filter-button" data-protocol="FANET">FANET</button>
+                        <button type="button" class="filter-button" data-protocol="ADS-L">ADS-L</button>
+                    </div>
+                </div>
+            </div>
+            <div class="aircraft-layout">
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th><button class="sort-button active" data-sort="aircraft_id">Aircraft <span aria-hidden="true">▲</span></button></th>
+                                <th><button class="sort-button" data-sort="protocol">Protocol <span aria-hidden="true"></span></button></th>
+                                <th><button class="sort-button" data-sort="distance_km">Distance <span aria-hidden="true"></span></button></th>
+                                <th><button class="sort-button" data-sort="altitude_m">Altitude <span aria-hidden="true"></span></button></th>
+                                <th><button class="sort-button" data-sort="speed_kmh">Speed <span aria-hidden="true"></span></button></th>
+                                <th><button class="sort-button" data-sort="course_deg">Course <span aria-hidden="true"></span></button></th>
+                                <th><button class="sort-button" data-sort="snr_db">SNR <span aria-hidden="true"></span></button></th>
+                            </tr>
+                        </thead>
+                        <tbody id="aircraft-table"></tbody>
+                    </table>
+                    <div id="empty-message" class="empty">No active aircraft received in the last 10 minutes.</div>
+                </div>
+                <aside id="aircraft-details" class="aircraft-details" aria-live="polite">
+                    <div class="details-placeholder">
+                        <span class="details-icon">➤</span>
+                        <strong>Select an aircraft</strong>
+                        <span>Click a marker or table row to view live details.</span>
+                    </div>
+                </aside>
+            </div>
+        </section>
+
+        <section class="card map-card">
+            <div class="section-heading">
+                <div class="map-title-row">
+                    <h2 id="map-title">Live map</h2>
+                    <div class="map-mode-switch" aria-label="Map mode">
+                        <button id="map-live-mode" type="button" class="filter-button active">Live</button>
+                        <button id="map-replay-mode" type="button" class="filter-button">Replay</button>
+                        <button id="map-coverage-mode" type="button" class="filter-button">All tracks</button>
+                    </div>
+                </div>
+                <div class="legend" aria-label="Protocol colours">
+                    <span><i class="legend-dot flarm"></i>FLARM</span>
+                    <span><i class="legend-dot fanet"></i>FANET</span>
+                    <span><i class="legend-dot adsl"></i>ADS-L</span>
+                    <span><i class="legend-dot other"></i>Other</span>
+                </div>
+            </div>
+            <div class="map-style-row">
+                <label class="map-style-control" for="map-style">Map style
+                    <select id="map-style">
+                        <option value="street">Street</option>
+                        <option value="topographic">Topographic</option>
+                        <option value="satellite">Satellite</option>
+                    </select>
+                </label>
+            </div>
+            <div id="replay-controls" class="replay-controls" hidden>
+                <label>Day
+                    <input id="replay-date" type="date">
+                </label>
+                <label class="replay-session-label">Flight session
+                    <select id="replay-session"><option value="">Select a session</option></select>
+                </label>
+                <button id="replay-play" type="button" class="filter-button" disabled>Play</button>
+                <input id="replay-timeline" class="replay-timeline" type="range" min="0" max="0" value="0" disabled aria-label="Replay timeline">
+                <span id="replay-time" class="replay-time">No session selected</span>
+                <label>Speed
+                    <select id="replay-speed">
+                        <option value="1">1×</option>
+                        <option value="2">2×</option>
+                        <option value="5" selected>5×</option>
+                        <option value="10">10×</option>
+                    </select>
+                </label>
+            </div>
+            <div id="coverage-controls" class="coverage-controls" hidden>
+                <span>Point colour</span>
+                <div class="map-mode-switch" aria-label="Coverage colour mode">
+                    <button id="coverage-density" type="button" class="filter-button active">Density</button>
+                    <button id="coverage-altitude" type="button" class="filter-button">Altitude ASL</button>
+                </div>
+                <span id="coverage-scale" class="coverage-scale">Red intensity shows positions per cell</span>
+            </div>
+            <div id="map" aria-label="Live aircraft map"></div>
+        </section>
+
+        <details class="card activity-card">
+            <summary class="section-heading health-toggle">
+                <h2>Today's activity</h2>
+                <span class="health-toggle-right">
+                    <span id="activity-summary" class="health-summary">Loading…</span>
+                    <span class="health-chevron" aria-hidden="true">⌄</span>
+                </span>
+            </summary>
+            <div class="activity-content">
+                <div class="activity-records">
+                    <div class="health-item"><span>Packets today</span><strong id="activity-packets">—</strong></div>
+                    <div class="health-item"><span>Aircraft today</span><strong id="activity-aircraft">—</strong></div>
+                    <div class="health-item"><span>Maximum altitude</span><strong id="activity-altitude">—</strong></div>
+                    <div class="health-item"><span>Maximum speed</span><strong id="activity-speed">—</strong></div>
+                    <div class="health-item"><span>Maximum distance</span><strong id="activity-distance">—</strong></div>
+                </div>
+                <div class="activity-columns">
+                    <div>
+                        <h3>Packets by hour</h3>
+                        <div id="hourly-chart" class="hourly-chart" aria-label="Packets received by hour"></div>
+                    </div>
+                    <div>
+                        <h3>Aircraft by protocol</h3>
+                        <div id="protocol-summary" class="protocol-summary"></div>
+                    </div>
+                </div>
+            </div>
+        </details>
+
+        <details class="card history-card">
+            <summary class="section-heading health-toggle">
+                <h2>History</h2>
+                <span class="health-toggle-right">
+                    <span id="history-summary" class="health-summary">Last 7 days</span>
+                    <span class="health-chevron" aria-hidden="true">⌄</span>
+                </span>
+            </summary>
+            <div class="history-content">
+                <div class="history-controls">
+                    <div class="range-buttons" aria-label="History range">
+                        <button type="button" class="filter-button active" data-history-days="7">7 days</button>
+                        <button type="button" class="filter-button" data-history-days="30">30 days</button>
+                    </div>
+                    <label class="history-date-label">Selected date
+                        <input id="history-date" type="date">
+                    </label>
+                </div>
+                <div class="history-layout">
+                    <div class="table-wrapper history-days-wrapper">
+                        <table>
+                            <thead><tr><th>Date</th><th>Packets</th><th>Aircraft</th><th title="Maximum altitude">Max alt.</th><th title="Maximum speed">Max speed</th></tr></thead>
+                            <tbody id="history-days"></tbody>
+                        </table>
+                    </div>
+                    <div class="history-day-detail">
+                        <div class="section-heading compact-heading">
+                            <h3 id="history-day-title">Select a date</h3>
+                            <span id="history-day-distance" class="health-summary"></span>
+                        </div>
+                        <div id="history-day-protocols" class="history-protocols"></div>
+                        <div class="history-session-controls">
+                            <input id="history-aircraft-filter" type="search" placeholder="Search aircraft ID" aria-label="Search history aircraft">
+                            <select id="history-protocol-filter" aria-label="Filter history by protocol">
+                                <option value="ALL">All protocols</option>
+                                <option value="FLARM">FLARM</option>
+                                <option value="FANET">FANET</option>
+                                <option value="ADS-L">ADS-L</option>
+                                <option value="OTHER">Other</option>
+                            </select>
+                            <select id="history-type-filter" aria-label="Filter history by aircraft type">
+                                <option value="ALL">All aircraft types</option>
+                            </select>
+                            <span id="history-session-count" class="health-summary"></span>
+                        </div>
+                        <div class="table-wrapper history-session-wrapper">
+                            <table>
+                                <thead><tr>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="aircraft_id">Aircraft <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="aircraft_type">Type <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="session_number" title="Session">Sess. <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="protocol" title="Protocols">Prot. <span></span></button></th>
+                                    <th><button class="history-sort-button active" type="button" data-history-sort="first_received">First <span>▲</span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="last_received">Last <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="duration_seconds" title="Duration">Dur. <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="min_distance_km" title="Minimum distance">Min. dist. <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="max_distance_km" title="Maximum distance">Max. dist. <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="max_altitude_m" title="Maximum altitude">Max alt. <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="max_speed_kmh">Max speed <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="max_snr_db">Best SNR <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="position_points">Points <span></span></button></th>
+                                    <th></th>
+                                </tr></thead>
+                                <tbody id="history-aircraft"></tbody>
+                            </table>
+                            <div id="history-empty" class="empty">Select a date to view received aircraft.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </details>
+
+        <details class="card health-card">
+            <summary class="section-heading health-toggle">
+                <h2>Receiver health</h2>
+                <span class="health-toggle-right">
+                    <span id="health-summary" class="health-summary">Checking…</span>
+                    <span class="health-chevron" aria-hidden="true">⌄</span>
+                </span>
+            </summary>
+            <div class="health-content">
+                <div class="health-grid">
+                    <div class="health-item"><span>Temperature</span><strong id="health-temperature">—</strong></div>
+                    <div class="health-item"><span>CPU load</span><strong id="health-load">—</strong></div>
+                    <div class="health-item"><span>Memory available</span><strong id="health-memory">—</strong></div>
+                    <div class="health-item"><span>Disk free</span><strong id="health-disk">—</strong></div>
+                    <div class="health-item"><span>Uptime</span><strong id="health-uptime">—</strong></div>
+                    <div class="health-item"><span>Database size</span><strong id="health-database">—</strong></div>
+                </div>
+                <div class="service-strip" aria-label="Service status">
+                    <span><i id="service-decoder" class="service-dot"></i>Decoder</span>
+                    <span><i id="service-collector" class="service-dot"></i>Collector</span>
+                    <span><i id="service-monitor" class="service-dot"></i>Monitor</span>
+                </div>
+            </div>
+        </details>
+
+    </main>
+    <script>
+        window.OGN_CONFIG = {{ {"station": station}|tojson }};
+    </script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js', v='20260807-map-style2') }}"></script>
+</body>
+</html>
