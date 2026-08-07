@@ -34,6 +34,8 @@ The decoder itself is not included. OGN Monitor starts at the decoder's local TC
 
 ## Quick start
 
+For a complete new-device walkthrough, including decoder verification, service checks, updates, backups and troubleshooting, read the **[Raspberry Pi installation guide](docs/INSTALLATION.md)**.
+
 ```sh
 git clone https://github.com/MakeITBetterSAGL/ogn-monitor.git
 cd ogn-monitor
