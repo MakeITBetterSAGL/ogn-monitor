@@ -46,9 +46,9 @@ Edit `.env` and set at least:
 
 ```dotenv
 OGN_STATION_NAME="My OGN Station"
-OGN_STATION_LATITUDE="46.000000"
-OGN_STATION_LONGITUDE="8.000000"
-OGN_TIMEZONE="Europe/Zurich"
+OGN_STATION_LATITUDE="0.000000"
+OGN_STATION_LONGITUDE="0.000000"
+OGN_TIMEZONE="UTC"
 ```
 
 Then initialize aircraft metadata and start the services:
