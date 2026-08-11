@@ -4,6 +4,9 @@ const STATION = window.OGN_CONFIG.station;
 const DISPLAY_LOCALE = "en-GB";
 const DISPLAY_TIME_ZONE = STATION.timezone;
 const REFRESH = { stats: 5000, aircraft: 5000, tracks: 10000, system: 15000, history: 60000, archive: 300000 };
+const mapCard = document.querySelector(".map-card");
+const activeAircraftCard = document.querySelector(".table-card");
+if (mapCard && activeAircraftCard) mapCard.after(activeAircraftCard);
 const map = L.map("map", { preferCanvas: true }).setView([STATION.latitude, STATION.longitude], 12);
 const coverageRenderer = L.canvas({ padding: .5 });
 const baseMaps = {
@@ -65,8 +68,15 @@ let coverageLayer = null;
 let coverageSummary = null;
 let coverageStyle = "density";
 let latestHistorySessions = [];
-let historySortState = { key: "first_received", direction: 1 };
+let historySortState = { key: "last_received", direction: -1 };
+let previousActiveAircraftCount = Number(document.getElementById("active-aircraft")?.textContent || 0);
+const activeAircraftToggle = activeAircraftCard.querySelector("summary");
+activeAircraftToggle.setAttribute("aria-disabled", String(!previousActiveAircraftCount));
+activeAircraftToggle.addEventListener("click", event => { if (!previousActiveAircraftCount) event.preventDefault(); });
+const HISTORY_PAGE_SIZE = 10;
+let historyPage = 1;
 const aircraftMetadataCache = new Map();
+const historyDayDetailPanel = document.querySelector(".history-day-detail");
 
 function formatNumber(value, decimals = 0) {
     return value === null || value === undefined || !Number.isFinite(Number(value))
@@ -150,6 +160,15 @@ function formatEuropeanDate(value, includeWeekday = false) {
         timeZone: DISPLAY_TIME_ZONE,
     });
 }
+function formatCompactDayDate(value) {
+    const timestamp = new Date(String(value).length === 10 ? `${value}T12:00:00` : value);
+    if (Number.isNaN(timestamp.getTime())) return "—";
+    const weekday = timestamp.toLocaleDateString("en-GB", { weekday: "short", timeZone: DISPLAY_TIME_ZONE });
+    const day = timestamp.toLocaleDateString("en-GB", { day: "2-digit", timeZone: DISPLAY_TIME_ZONE });
+    const month = timestamp.toLocaleDateString("en-GB", { month: "2-digit", timeZone: DISPLAY_TIME_ZONE });
+    const year = timestamp.toLocaleDateString("en-GB", { year: "2-digit", timeZone: DISPLAY_TIME_ZONE });
+    return `${weekday}, ${day}.${month}.${year}`;
+}
 function formatEuropeanDateTime(value) {
     const timestamp = new Date(value);
     return Number.isNaN(timestamp.getTime()) ? "—" : timestamp.toLocaleString(DISPLAY_LOCALE, {
@@ -171,7 +190,7 @@ function markerPopup(aircraft) {
         Aircraft type: ${escapeHtml(aircraftTypeLabel(aircraft.aircraft_type))}<br>
         Protocols: ${escapeHtml(aircraftProtocolLabel(aircraft))}<br>
         Source IDs: ${escapeHtml((aircraft.raw_aircraft_ids || [aircraft.aircraft_id]).join(", "))}<br>
-        Distance: ${formatNumber(aircraft.distance_km, 1)} km<br>
+        Dist.: ${formatNumber(aircraft.distance_km, 1)} km<br>
         Altitude: ${formatNumber(aircraft.altitude_m)} m<br>
         Speed: ${formatNumber(aircraft.speed_kmh)} km/h<br>
         Course: ${formatNumber(aircraft.course_deg)}°<br>
@@ -211,7 +230,7 @@ function updateDetails(aircraft) {
     details.innerHTML = `<div class="details-header"><div><h3>${escapeHtml(aircraft.aircraft_id)}</h3><span class="protocol-pill">${escapeHtml(aircraftProtocolLabel(aircraft))}</span></div><button class="details-close" type="button" aria-label="Close aircraft details">×</button></div>
         <dl class="details-grid">
             <div><dt>Aircraft type</dt><dd>${escapeHtml(aircraftTypeLabel(aircraft.aircraft_type))}</dd></div>
-            <div><dt>Distance</dt><dd>${formatNumber(aircraft.distance_km, 1)} km</dd></div>
+            <div><dt>Dist.</dt><dd>${formatNumber(aircraft.distance_km, 1)} km</dd></div>
             <div><dt>Last received</dt><dd>${timestampAge(aircraft.received_at)}</dd></div>
             <div><dt>Altitude</dt><dd>${formatNumber(aircraft.altitude_m)} m</dd></div>
             <div><dt>Speed</dt><dd>${formatNumber(aircraft.speed_kmh)} km/h</dd></div>
@@ -251,7 +270,7 @@ function updateTable(aircraftList) {
     body.replaceChildren();
     empty.hidden = aircraftList.length > 0;
     empty.textContent = latestAircraft.length === 0
-        ? "No active aircraft received in the last 10 minutes."
+        ? "No traffic in the last 10 mins."
         : "No aircraft match the current search and filters.";
     for (const aircraft of aircraftList) {
         const row = document.createElement("tr");
@@ -337,13 +356,35 @@ async function refreshHistory() {
         protocols.appendChild(row);
     }
 }
-async function loadHistoryDay(day) {
+function placeHistoryDayDetail(day, scrollToCard = false) {
+    const card = document.querySelector(`.history-day-card[data-date="${CSS.escape(day)}"]`);
+    if (!card || !historyDayDetailPanel) return;
+    document.querySelectorAll(".history-day-card").forEach(item => {
+        const selected = item === card;
+        item.classList.toggle("selected", selected);
+        item.querySelector(".history-day-summary")?.setAttribute("aria-expanded", String(selected));
+    });
+    card.appendChild(historyDayDetailPanel);
+    if (scrollToCard) card.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function closeHistoryDay() {
+    selectedHistoryDate = null;
+    document.querySelectorAll(".history-day-card").forEach(item => {
+        item.classList.remove("selected");
+        item.querySelector(".history-day-summary")?.setAttribute("aria-expanded", "false");
+    });
+    historyDayDetailPanel?.remove();
+}
+async function loadHistoryDay(day, scrollToCard = false) {
     selectedHistoryDate = day;
+    historyPage = 1;
+    placeHistoryDayDetail(day);
+    historySortState = { key: "last_received", direction: -1 };
+    syncHistorySortControls();
     document.getElementById("history-date").value = day;
-    document.querySelectorAll("#history-days tr").forEach(row => row.classList.toggle("selected", row.dataset.date === day));
     const detail = await getJson(`/api/history/day?date=${encodeURIComponent(day)}`);
     document.getElementById("history-day-title").textContent = formatEuropeanDate(day, true);
-    document.getElementById("history-day-distance").textContent = detail.max_distance_km === null ? "" : `Maximum distance ${formatNumber(detail.max_distance_km, 1)} km`;
+    document.getElementById("history-day-distance").textContent = detail.max_distance_km === null ? "" : `Max. dist. ${formatNumber(detail.max_distance_km, 1)} km`;
     const protocolContainer = document.getElementById("history-day-protocols");
     protocolContainer.replaceChildren();
     for (const protocol of detail.protocols) {
@@ -363,6 +404,7 @@ async function loadHistoryDay(day) {
         typeSelector.appendChild(option);
     }
     renderHistorySessions();
+    placeHistoryDayDetail(day, scrollToCard);
 }
 function filteredHistorySessions() {
     const search = document.getElementById("history-aircraft-filter").value.trim().toUpperCase();
@@ -391,6 +433,15 @@ function filteredHistorySessions() {
         return result * historySortState.direction;
     });
 }
+function syncHistorySortControls() {
+    document.getElementById("history-mobile-sort").value = historySortState.key;
+    document.getElementById("history-mobile-direction").value = String(historySortState.direction);
+    document.querySelectorAll(".history-sort-button").forEach(button => {
+        const active = button.dataset.historySort === historySortState.key;
+        button.classList.toggle("active", active);
+        button.querySelector("span").textContent = active ? (historySortState.direction === 1 ? "▲" : "▼") : "";
+    });
+}
 async function openHistoryReplay(session) {
     if (!selectedHistoryDate) return;
     document.getElementById("replay-date").value = selectedHistoryDate;
@@ -408,12 +459,46 @@ function renderAircraftMetadata(metadata) {
             <div><span>Aircraft model</span><strong>${escapeHtml(record.aircraft_model || "Unknown")}</strong></div>
             <div><span>Competition ID</span><strong>${escapeHtml(record.competition_id || "—")}</strong></div>
             <div><span>Device</span><strong>${escapeHtml(record.device_type)} · ${escapeHtml(record.device_id)}</strong></div>
-            <div><span>Tracked / identified</span><strong>${record.tracked ? "Yes" : "No"} / Yes</strong></div>
         </div>`).join("") : `<div class="metadata-empty">No public identification record was found for this aircraft ID.</div>`;
-    const sources = (metadata.sources || []).map(source => `<a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.name)} ↗</a>`).join("");
+    const sourceLabel = name => /OGN/i.test(name) ? "OGN DB" : /OpenSky/i.test(name) ? "OpenSky" : /FOCA|Swiss Aircraft Register/i.test(name) ? "FOCA" : name;
+    const sources = (metadata.sources || []).map(source => `<a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceLabel(source.name))} ↗</a>`).join("");
     return `<div class="aircraft-metadata-panel"><div class="metadata-heading"><strong>Aircraft information</strong><span>Public aviation metadata only</span></div>${recordHtml}<div class="metadata-sources"><span>Sources</span>${sources}</div></div>`;
 }
 async function toggleAircraftMetadata(session, row) {
+    if (row) {
+        if (row.classList.contains("metadata-active")) {
+            row.classList.remove("metadata-active");
+            row.querySelector(".aircraft-metadata-cell")?.remove();
+            return;
+        }
+        document.querySelectorAll("#history-aircraft > tr.metadata-active").forEach(item => {
+            item.classList.remove("metadata-active");
+            item.querySelector(".aircraft-metadata-cell")?.remove();
+        });
+        const detailCell = document.createElement("td");
+        detailCell.className = "aircraft-metadata-cell";
+        const switchHeader = `<div class="session-view-switch"><strong>Aircraft details</strong><button type="button">Session information</button></div>`;
+        detailCell.innerHTML = `${switchHeader}<div class="metadata-loading">Loading aircraft information…</div>`;
+        detailCell.addEventListener("click", event => event.stopPropagation());
+        const closeDetails = event => { event.stopPropagation(); row.classList.remove("metadata-active"); detailCell.remove(); };
+        detailCell.querySelector("button").addEventListener("click", closeDetails);
+        row.appendChild(detailCell);
+        row.classList.add("metadata-active");
+        const cacheKey = `${session.aircraft_id}|${(session.raw_aircraft_ids || []).join(",")}`;
+        try {
+            let metadata = aircraftMetadataCache.get(cacheKey);
+            if (!metadata) {
+                metadata = await getJson(`/api/aircraft/metadata?aircraft_id=${encodeURIComponent(session.aircraft_id)}&raw_ids=${encodeURIComponent((session.raw_aircraft_ids || []).join(","))}`);
+                aircraftMetadataCache.set(cacheKey, metadata);
+            }
+            if (detailCell.isConnected) detailCell.innerHTML = `${switchHeader}${renderAircraftMetadata(metadata)}`;
+        } catch (error) {
+            console.error("Aircraft metadata unavailable:", error);
+            if (detailCell.isConnected) detailCell.innerHTML = `${switchHeader}<div class="metadata-empty">Aircraft information is temporarily unavailable.</div>`;
+        }
+        if (detailCell.isConnected) detailCell.querySelector("button").addEventListener("click", closeDetails);
+        return;
+    }
     const existing = row.nextElementSibling;
     if (existing && existing.classList.contains("metadata-detail-row")) { existing.remove(); return; }
     document.querySelectorAll(".metadata-detail-row").forEach(item => item.remove());
@@ -439,13 +524,24 @@ async function toggleAircraftMetadata(session, row) {
 }
 function renderHistorySessions() {
     const sessions = filteredHistorySessions();
+    const pageCount = Math.max(1, Math.ceil(sessions.length / HISTORY_PAGE_SIZE));
+    historyPage = Math.min(Math.max(1, historyPage), pageCount);
+    const pageStart = (historyPage - 1) * HISTORY_PAGE_SIZE;
+    const pageSessions = sessions.slice(pageStart, pageStart + HISTORY_PAGE_SIZE);
     const body = document.getElementById("history-aircraft");
     body.replaceChildren();
     const empty = document.getElementById("history-empty");
     empty.hidden = sessions.length > 0;
     empty.textContent = latestHistorySessions.length ? "No sessions match the selected filters." : "No sessions recorded on this date.";
-    document.getElementById("history-session-count").textContent = `${sessions.length}/${latestHistorySessions.length} sessions`;
-    for (const aircraft of sessions) {
+    const rangeStart = sessions.length ? pageStart + 1 : 0;
+    const rangeEnd = Math.min(pageStart + HISTORY_PAGE_SIZE, sessions.length);
+    document.getElementById("history-session-count").textContent = `${rangeStart}-${rangeEnd} of ${sessions.length} sessions`;
+    const pagination = document.getElementById("history-pagination");
+    pagination.hidden = sessions.length <= HISTORY_PAGE_SIZE;
+    document.getElementById("history-page-status").textContent = `Page ${historyPage} of ${pageCount}`;
+    document.getElementById("history-page-prev").disabled = historyPage <= 1;
+    document.getElementById("history-page-next").disabled = historyPage >= pageCount;
+    for (const aircraft of pageSessions) {
         const row = document.createElement("tr");
         row.tabIndex = 0;
         row.title = `Source IDs: ${(aircraft.raw_aircraft_ids || []).join(", ")}`;
@@ -465,18 +561,34 @@ async function refreshArchive() {
     const archive = await getJson(`/api/history/days?days=${archiveDays}`);
     document.getElementById("history-summary").textContent = `Last ${archive.days} days`;
     const body = document.getElementById("history-days");
+    historyDayDetailPanel?.remove();
     body.replaceChildren();
     for (const day of archive.history) {
-        const row = document.createElement("tr");
-        row.dataset.date = day.date;
-        row.classList.toggle("selected", day.date === selectedHistoryDate);
-        row.innerHTML = `<td><strong>${formatEuropeanDate(day.date)}</strong></td><td>${formatInteger(day.packets)}</td><td>${formatInteger(day.aircraft)}</td><td>${formatNumber(day.max_altitude_m)} m</td><td>${formatNumber(day.max_speed_kmh)} km/h</td>`;
-        row.addEventListener("click", () => runRefresh(() => loadHistoryDay(day.date)));
-        body.appendChild(row);
+        const card = document.createElement("article");
+        card.className = "history-day-card";
+        card.dataset.date = day.date;
+        const summary = document.createElement("button");
+        summary.type = "button";
+        summary.className = "history-day-summary";
+        summary.setAttribute("aria-expanded", String(day.date === selectedHistoryDate));
+        summary.innerHTML = `<span class="history-day-date"><small>Date</small><strong>${formatCompactDayDate(day.date)}</strong></span>
+            <span><small>Packets</small><strong>${formatInteger(day.packets)}</strong></span>
+            <span><small>Aircraft</small><strong>${formatInteger(day.aircraft)}</strong></span>
+            <span class="history-day-secondary"><small>Max. altitude</small><strong>${formatNumber(day.max_altitude_m)} m</strong></span>
+            <span class="history-day-secondary"><small>Max. speed</small><strong>${formatNumber(day.max_speed_kmh)} km/h</strong></span>
+            <span class="history-day-secondary"><small>Max. dist.</small><strong>${formatNumber(day.max_distance_km, 1)} km</strong></span>
+            <span class="history-day-expand" aria-hidden="true">⌄</span>`;
+        summary.addEventListener("click", () => {
+            if (card.classList.contains("selected")) closeHistoryDay();
+            else runRefresh(() => loadHistoryDay(day.date, true));
+        });
+        card.appendChild(summary);
+        body.appendChild(card);
     }
-    if (!selectedHistoryDate) {
-        const localDate = new Date().toLocaleDateString("sv-SE", { timeZone: DISPLAY_TIME_ZONE });
-        await loadHistoryDay(localDate);
+    if (selectedHistoryDate && body.querySelector(`.history-day-card[data-date="${CSS.escape(selectedHistoryDate)}"]`)) {
+        placeHistoryDayDetail(selectedHistoryDate);
+    } else {
+        selectedHistoryDate = null;
     }
 }
 async function refreshAircraft() {
@@ -500,6 +612,13 @@ async function refreshAircraft() {
     for (const [id, entry] of aircraftMarkers) if (!activeIds.has(id)) { map.removeLayer(entry.marker); aircraftMarkers.delete(id); }
     if (selectedAircraftId && !activeIds.has(selectedAircraftId)) clearSelection();
     latestAircraft = data.aircraft;
+    const activeAircraftCard = document.querySelector(".table-card");
+    const activeCount = data.aircraft.length;
+    document.getElementById("active-aircraft-summary").textContent = activeCount ? `${activeCount} active` : "No traffic in the last 10 mins.";
+    activeAircraftToggle.setAttribute("aria-disabled", String(!activeCount));
+    if (!activeCount) activeAircraftCard.open = false;
+    else if (!previousActiveAircraftCount) activeAircraftCard.open = true;
+    previousActiveAircraftCount = activeCount;
     renderAircraft();
     if (selectedAircraftId) {
         const selected = aircraftMarkers.get(selectedAircraftId);
@@ -531,6 +650,7 @@ function clearReplayLayers() {
     if (replayMarker) map.removeLayer(replayMarker);
     if (replayTrack) map.removeLayer(replayTrack);
     replayMarker = null; replayTrack = null; replayPoints = []; replayIndex = 0;
+    document.getElementById("replay-flight-summary").hidden = true;
 }
 function replayPopup(point) {
     return `<strong>${escapeHtml(point.aircraft_id)}</strong><br>Aircraft type: ${escapeHtml(aircraftTypeLabel(point.aircraft_type))}<br>Time: ${formatHistoryTime(point.received_at)}<br>Protocol: ${escapeHtml(point.protocol || "OTHER")}<br>Altitude: ${formatNumber(point.altitude_m)} m<br>Speed: ${formatNumber(point.speed_kmh)} km/h<br>Course: ${formatNumber(point.course_deg)}°<br>Climb rate: ${formatNumber(point.climb_ms, 1)} m/s`;
@@ -590,6 +710,14 @@ async function loadReplaySession() {
     clearReplayLayers(); document.getElementById("replay-time").textContent = "Loading…";
     const data = await getJson(`/api/replay/session?date=${encodeURIComponent(day)}&aircraft_id=${encodeURIComponent(aircraftId)}&session=${encodeURIComponent(sessionNumber)}`);
     replayPoints = data.points.map(point => ({ ...point, aircraft_id: data.aircraft_id }));
+    if (replayPoints.length) {
+        const aircraftTypes = [...new Set(replayPoints.map(point => aircraftTypeLabel(point.aircraft_type)))];
+        const protocols = [...new Set(replayPoints.map(point => point.protocol || "OTHER"))];
+        document.getElementById("replay-aircraft-code").textContent = data.aircraft_id;
+        document.getElementById("replay-aircraft-type").textContent = aircraftTypes.join(" / ");
+        document.getElementById("replay-aircraft-protocol").textContent = protocols.join(" / ");
+        document.getElementById("replay-flight-summary").hidden = false;
+    }
     const timeline = document.getElementById("replay-timeline");
     timeline.max = Math.max(0, replayPoints.length - 1); timeline.value = 0; timeline.disabled = replayPoints.length === 0;
     document.getElementById("replay-play").disabled = replayPoints.length < 2;
@@ -676,6 +804,8 @@ async function runRefresh(task) {
     catch (error) { console.error("Live update failed:", error); setConnectionState("Update unavailable", true); }
 }
 
+syncHistorySortControls();
+document.getElementById("replay-speed").value = "10";
 Promise.all([runRefresh(refreshStats), runRefresh(refreshAircraft), runRefresh(refreshTracks), runRefresh(refreshSystem), runRefresh(refreshHistory), runRefresh(refreshArchive)]);
 document.getElementById("aircraft-search").addEventListener("input", event => {
     searchTerm = event.target.value.trim().toUpperCase();
@@ -706,23 +836,37 @@ document.querySelectorAll("[data-history-days]").forEach(button => button.addEve
     runRefresh(refreshArchive);
 }));
 document.getElementById("history-date").addEventListener("change", event => {
-    if (event.target.value) runRefresh(() => loadHistoryDay(event.target.value));
+    if (event.target.value) runRefresh(() => loadHistoryDay(event.target.value, true));
 });
-document.getElementById("history-aircraft-filter").addEventListener("input", renderHistorySessions);
-document.getElementById("history-protocol-filter").addEventListener("change", renderHistorySessions);
-document.getElementById("history-type-filter").addEventListener("change", renderHistorySessions);
+function resetHistoryPageAndRender() { historyPage = 1; renderHistorySessions(); }
+document.getElementById("history-aircraft-filter").addEventListener("input", resetHistoryPageAndRender);
+document.getElementById("history-protocol-filter").addEventListener("change", resetHistoryPageAndRender);
+document.getElementById("history-type-filter").addEventListener("change", resetHistoryPageAndRender);
+document.getElementById("history-mobile-sort").addEventListener("change", event => {
+    historySortState = { key: event.target.value, direction: Number(document.getElementById("history-mobile-direction").value) };
+    syncHistorySortControls();
+    resetHistoryPageAndRender();
+});
+document.getElementById("history-mobile-direction").addEventListener("change", event => {
+    historySortState = { key: document.getElementById("history-mobile-sort").value, direction: Number(event.target.value) };
+    syncHistorySortControls();
+    resetHistoryPageAndRender();
+});
 document.querySelectorAll(".history-sort-button").forEach(button => button.addEventListener("click", () => {
     const key = button.dataset.historySort;
     historySortState = historySortState.key === key
         ? { key, direction: historySortState.direction * -1 }
         : { key, direction: 1 };
-    document.querySelectorAll(".history-sort-button").forEach(item => {
-        const active = item === button;
-        item.classList.toggle("active", active);
-        item.querySelector("span").textContent = active ? (historySortState.direction === 1 ? "▲" : "▼") : "";
-    });
-    renderHistorySessions();
+    syncHistorySortControls();
+    resetHistoryPageAndRender();
 }));
+function changeHistoryPage(offset) {
+    historyPage += offset;
+    renderHistorySessions();
+    requestAnimationFrame(() => document.querySelector(".history-session-wrapper")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+}
+document.getElementById("history-page-prev").addEventListener("click", () => changeHistoryPage(-1));
+document.getElementById("history-page-next").addEventListener("click", () => changeHistoryPage(1));
 document.getElementById("map-live-mode").addEventListener("click", () => runRefresh(() => setMapMode("live")));
 document.getElementById("map-replay-mode").addEventListener("click", () => runRefresh(() => setMapMode("replay")));
 document.getElementById("map-coverage-mode").addEventListener("click", () => runRefresh(() => setMapMode("coverage")));
