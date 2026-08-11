@@ -526,9 +526,24 @@ def calculate_archive_days(days):
             """,
             (start_utc,),
         ).fetchall()
+        coordinate_rows = db.execute(
+            """
+            SELECT date(received_at, 'localtime') AS day, latitude, longitude
+            FROM positions
+            WHERE received_at >= ? AND latitude IS NOT NULL AND longitude IS NOT NULL
+            """,
+            (start_utc,),
+        ).fetchall()
 
     packets = {row["day"]: dict(row) for row in packet_rows}
     positions = {row["day"]: dict(row) for row in position_rows}
+    max_distances = {}
+    for row in coordinate_rows:
+        value = distance_km(
+            STATION_LATITUDE, STATION_LONGITUDE,
+            row["latitude"], row["longitude"],
+        )
+        max_distances[row["day"]] = max(max_distances.get(row["day"], 0), value)
     result = []
     for offset in range(days):
         day_value = first_day + timedelta(days=offset)
@@ -542,6 +557,7 @@ def calculate_archive_days(days):
                 "aircraft": packet.get("aircraft", 0),
                 "max_altitude_m": position.get("max_altitude_m"),
                 "max_speed_kmh": position.get("max_speed_kmh"),
+                "max_distance_km": round(max_distances[key], 1) if key in max_distances else None,
             }
         )
     return list(reversed(result))
