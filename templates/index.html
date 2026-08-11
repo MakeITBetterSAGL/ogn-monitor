@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OGN Monitor</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20260807-map-style1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20260811-replay-summary') }}">
 </head>
 <body>
     <main class="container">
@@ -44,12 +44,18 @@
             </article>
         </section>
 
-        <section class="card table-card">
-            <div class="section-heading">
+        <details class="card table-card"{% if stats.active_aircraft %} open{% endif %}>
+            <summary class="section-heading health-toggle">
                 <div class="title-with-count">
                     <h2>Active aircraft</h2>
-                    <span id="aircraft-count" class="count-badge">0</span>
+                    <span id="aircraft-count" class="count-badge">{{ stats.active_aircraft }}</span>
                 </div>
+                <span class="health-toggle-right">
+                    <span id="active-aircraft-summary" class="health-summary">{{ (stats.active_aircraft|string + ' active') if stats.active_aircraft else 'No traffic in the last 10 mins.' }}</span>
+                    <span class="health-chevron" aria-hidden="true">&#8964;</span>
+                </span>
+            </summary>
+            <div class="active-aircraft-content">
                 <div class="table-controls">
                     <label class="search-field">
                         <span class="visually-hidden">Search aircraft ID</span>
@@ -62,15 +68,14 @@
                         <button type="button" class="filter-button" data-protocol="ADS-L">ADS-L</button>
                     </div>
                 </div>
-            </div>
-            <div class="aircraft-layout">
+                <div class="aircraft-layout">
                 <div class="table-wrapper">
                     <table>
                         <thead>
                             <tr>
                                 <th><button class="sort-button active" data-sort="aircraft_id">Aircraft <span aria-hidden="true">▲</span></button></th>
                                 <th><button class="sort-button" data-sort="protocol">Protocol <span aria-hidden="true"></span></button></th>
-                                <th><button class="sort-button" data-sort="distance_km">Distance <span aria-hidden="true"></span></button></th>
+                                <th><button class="sort-button" data-sort="distance_km">Dist. <span aria-hidden="true"></span></button></th>
                                 <th><button class="sort-button" data-sort="altitude_m">Altitude <span aria-hidden="true"></span></button></th>
                                 <th><button class="sort-button" data-sort="speed_kmh">Speed <span aria-hidden="true"></span></button></th>
                                 <th><button class="sort-button" data-sort="course_deg">Course <span aria-hidden="true"></span></button></th>
@@ -79,7 +84,7 @@
                         </thead>
                         <tbody id="aircraft-table"></tbody>
                     </table>
-                    <div id="empty-message" class="empty">No active aircraft received in the last 10 minutes.</div>
+                    <div id="empty-message" class="empty">No traffic in the last 10 mins.</div>
                 </div>
                 <aside id="aircraft-details" class="aircraft-details" aria-live="polite">
                     <div class="details-placeholder">
@@ -88,8 +93,9 @@
                         <span>Click a marker or table row to view live details.</span>
                     </div>
                 </aside>
+                </div>
             </div>
-        </section>
+        </details>
 
         <section class="card map-card">
             <div class="section-heading">
@@ -109,7 +115,7 @@
                 </div>
             </div>
             <div class="map-style-row">
-                <label class="map-style-control" for="map-style">Map style
+                <label class="map-style-control" for="map-style"><span class="map-style-label">Map style</span>
                     <select id="map-style">
                         <option value="street">Street</option>
                         <option value="topographic">Topographic</option>
@@ -118,23 +124,34 @@
                 </label>
             </div>
             <div id="replay-controls" class="replay-controls" hidden>
-                <label>Day
-                    <input id="replay-date" type="date">
-                </label>
-                <label class="replay-session-label">Flight session
-                    <select id="replay-session"><option value="">Select a session</option></select>
-                </label>
-                <button id="replay-play" type="button" class="filter-button" disabled>Play</button>
-                <input id="replay-timeline" class="replay-timeline" type="range" min="0" max="0" value="0" disabled aria-label="Replay timeline">
-                <span id="replay-time" class="replay-time">No session selected</span>
-                <label>Speed
-                    <select id="replay-speed">
-                        <option value="1">1×</option>
-                        <option value="2">2×</option>
-                        <option value="5" selected>5×</option>
-                        <option value="10">10×</option>
-                    </select>
-                </label>
+                <div class="replay-row replay-source-row">
+                    <label>Day
+                        <input id="replay-date" type="date">
+                    </label>
+                    <label>Flight session
+                        <select id="replay-session"><option value="">Select a session</option></select>
+                    </label>
+                </div>
+                <div id="replay-flight-summary" class="replay-flight-summary" hidden>
+                    <div><small>Aircraft</small><strong id="replay-aircraft-code">—</strong></div>
+                    <div><small>Type</small><strong id="replay-aircraft-type">—</strong></div>
+                    <div><small>Protocol</small><strong id="replay-aircraft-protocol">—</strong></div>
+                </div>
+                <div class="replay-row replay-action-row">
+                    <label>Speed
+                        <select id="replay-speed">
+                            <option value="1">1×</option>
+                            <option value="2">2×</option>
+                            <option value="5">5×</option>
+                            <option value="10" selected>10×</option>
+                        </select>
+                    </label>
+                    <button id="replay-play" type="button" class="filter-button" disabled>Play</button>
+                </div>
+                <div class="replay-row replay-progress-row">
+                    <span id="replay-time" class="replay-time">No session selected</span>
+                    <input id="replay-timeline" class="replay-timeline" type="range" min="0" max="0" value="0" disabled aria-label="Replay timeline">
+                </div>
             </div>
             <div id="coverage-controls" class="coverage-controls" hidden>
                 <span>Point colour</span>
@@ -159,9 +176,9 @@
                 <div class="activity-records">
                     <div class="health-item"><span>Packets today</span><strong id="activity-packets">—</strong></div>
                     <div class="health-item"><span>Aircraft today</span><strong id="activity-aircraft">—</strong></div>
-                    <div class="health-item"><span>Maximum altitude</span><strong id="activity-altitude">—</strong></div>
-                    <div class="health-item"><span>Maximum speed</span><strong id="activity-speed">—</strong></div>
-                    <div class="health-item"><span>Maximum distance</span><strong id="activity-distance">—</strong></div>
+                    <div class="health-item"><span>Max. altitude</span><strong id="activity-altitude">—</strong></div>
+                    <div class="health-item"><span>Max. speed</span><strong id="activity-speed">—</strong></div>
+                    <div class="health-item"><span>Max. dist.</span><strong id="activity-distance">—</strong></div>
                 </div>
                 <div class="activity-columns">
                     <div>
@@ -195,11 +212,8 @@
                     </label>
                 </div>
                 <div class="history-layout">
-                    <div class="table-wrapper history-days-wrapper">
-                        <table>
-                            <thead><tr><th>Date</th><th>Packets</th><th>Aircraft</th><th title="Maximum altitude">Max alt.</th><th title="Maximum speed">Max speed</th></tr></thead>
-                            <tbody id="history-days"></tbody>
-                        </table>
+                    <div class="history-days-wrapper">
+                        <div id="history-days" class="history-days-list"></div>
                     </div>
                     <div class="history-day-detail">
                         <div class="section-heading compact-heading">
@@ -219,6 +233,30 @@
                             <select id="history-type-filter" aria-label="Filter history by aircraft type">
                                 <option value="ALL">All aircraft types</option>
                             </select>
+                            <div class="history-mobile-sort">
+                                <label>Sort by
+                                    <select id="history-mobile-sort" aria-label="Sort history sessions">
+                                        <option value="first_received">First received</option>
+                                        <option value="last_received" selected>Last received</option>
+                                        <option value="aircraft_id">Aircraft</option>
+                                        <option value="aircraft_type">Aircraft type</option>
+                                        <option value="protocol">Protocol</option>
+                                        <option value="duration_seconds">Duration</option>
+                                        <option value="min_distance_km">Min. dist.</option>
+                                        <option value="max_distance_km">Max. dist.</option>
+                                        <option value="max_altitude_m">Max. altitude</option>
+                                        <option value="max_speed_kmh">Max. speed</option>
+                                        <option value="max_snr_db">Best SNR</option>
+                                        <option value="position_points">Points</option>
+                                    </select>
+                                </label>
+                                <label>Order
+                                    <select id="history-mobile-direction" aria-label="History sort direction">
+                                        <option value="1">Asc</option>
+                                        <option value="-1" selected>Desc</option>
+                                    </select>
+                                </label>
+                            </div>
                             <span id="history-session-count" class="health-summary"></span>
                         </div>
                         <div class="table-wrapper history-session-wrapper">
@@ -228,13 +266,13 @@
                                     <th><button class="history-sort-button" type="button" data-history-sort="aircraft_type">Type <span></span></button></th>
                                     <th><button class="history-sort-button" type="button" data-history-sort="session_number" title="Session">Sess. <span></span></button></th>
                                     <th><button class="history-sort-button" type="button" data-history-sort="protocol" title="Protocols">Prot. <span></span></button></th>
-                                    <th><button class="history-sort-button active" type="button" data-history-sort="first_received">First <span>▲</span></button></th>
-                                    <th><button class="history-sort-button" type="button" data-history-sort="last_received">Last <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="first_received">First <span></span></button></th>
+                                    <th><button class="history-sort-button active" type="button" data-history-sort="last_received">Last <span>▼</span></button></th>
                                     <th><button class="history-sort-button" type="button" data-history-sort="duration_seconds" title="Duration">Dur. <span></span></button></th>
-                                    <th><button class="history-sort-button" type="button" data-history-sort="min_distance_km" title="Minimum distance">Min. dist. <span></span></button></th>
-                                    <th><button class="history-sort-button" type="button" data-history-sort="max_distance_km" title="Maximum distance">Max. dist. <span></span></button></th>
-                                    <th><button class="history-sort-button" type="button" data-history-sort="max_altitude_m" title="Maximum altitude">Max alt. <span></span></button></th>
-                                    <th><button class="history-sort-button" type="button" data-history-sort="max_speed_kmh">Max speed <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="min_distance_km" title="Min. dist.">Min. dist. <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="max_distance_km" title="Max. dist.">Max. dist. <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="max_altitude_m" title="Max. altitude">Max. alt. <span></span></button></th>
+                                    <th><button class="history-sort-button" type="button" data-history-sort="max_speed_kmh">Max. speed <span></span></button></th>
                                     <th><button class="history-sort-button" type="button" data-history-sort="max_snr_db">Best SNR <span></span></button></th>
                                     <th><button class="history-sort-button" type="button" data-history-sort="position_points">Points <span></span></button></th>
                                     <th></th>
@@ -243,6 +281,11 @@
                             </table>
                             <div id="history-empty" class="empty">Select a date to view received aircraft.</div>
                         </div>
+                        <nav id="history-pagination" class="history-pagination" aria-label="Session pages" hidden>
+                            <button id="history-page-prev" type="button" class="filter-button">Previous</button>
+                            <span id="history-page-status" class="health-summary"></span>
+                            <button id="history-page-next" type="button" class="filter-button">Next</button>
+                        </nav>
                     </div>
                 </div>
             </div>
@@ -274,10 +317,15 @@
         </details>
 
     </main>
+    <footer class="site-footer">
+        <a href="https://github.com/MakeITBetterSAGL/ogn-monitor" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/MakeITBetterSAGL/ogn-monitor/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
+        <span>Make IT Better SAGL</span>
+    </footer>
     <script>
         window.OGN_CONFIG = {{ {"station": station}|tojson }};
     </script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="{{ url_for('static', filename='js/app.js', v='20260807-map-style2') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js', v='20260811-replay-summary-history-fix') }}"></script>
 </body>
 </html>
