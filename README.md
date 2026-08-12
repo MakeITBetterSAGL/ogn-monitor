@@ -13,6 +13,22 @@ The dashboard provides:
 - street, topographic and satellite base maps;
 - Raspberry Pi resource and service health information.
 
+## Screenshots
+
+The examples below use synthetic aircraft, sessions and an approximate public map centre. They do not contain receiver data or a private installation location.
+
+### Live dashboard
+
+![OGN Monitor live dashboard](docs/screenshots/dashboard-desktop.png)
+
+### Flight-session history
+
+![OGN Monitor flight-session history](docs/screenshots/history-desktop.png)
+
+### Mobile layout
+
+<img src="docs/screenshots/dashboard-mobile.png" alt="OGN Monitor mobile dashboard" width="390">
+
 ## Public edition scope
 
 This repository intentionally does **not** include:
