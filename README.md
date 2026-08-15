@@ -2,6 +2,8 @@
 
 OGN Monitor is a lightweight web dashboard for a local Open Glider Network receiver. It is designed for Raspberry Pi installations and uses Flask, SQLite and Leaflet without Grafana or an external database.
 
+See the project-wide **[Changelog](CHANGELOG.md)** for release history, fixes and links to individual commits.
+
 The dashboard provides:
 
 - live receiver and traffic statistics;
