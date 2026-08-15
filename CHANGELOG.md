@@ -17,6 +17,11 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 - Added a persistent parser checkpoint so every packet is examined once and busy receivers can keep progressing.
 
+### Related issues
+
+- [#1 - Speed of Object much to high](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/1), reported by [@whallmann](https://github.com/whallmann).
+- [#2 - After some days, Map shows no Objects.](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/2), reported by [@whallmann](https://github.com/whallmann).
+
 ### Commits
 
 - [`07e92ee`](https://github.com/MakeITBetterSAGL/ogn-monitor/commit/07e92ee0ff9fde6a89837936a8f9a459f32a1bb6) Fix parser queue progress and APRS units
@@ -72,4 +77,3 @@ The project follows [Semantic Versioning](https://semver.org/).
 - [`de12e6b`](https://github.com/MakeITBetterSAGL/ogn-monitor/commit/de12e6bd29e9130cc50a0bb0c0e48447ed4bdf6e) Add Raspberry Pi installation guide
 - [`8063ad2`](https://github.com/MakeITBetterSAGL/ogn-monitor/commit/8063ad2e20b483d8ebf55068aef6164fb4f1bb7b) Use neutral example station settings
 - [`38b2b95`](https://github.com/MakeITBetterSAGL/ogn-monitor/commit/38b2b95893c6e2477e07669156ce08b9a1bb75a6) Initial public release
-
