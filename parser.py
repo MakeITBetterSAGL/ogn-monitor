@@ -27,6 +27,26 @@ PROTOCOLS = {
 }
 
 
+def initialize_parser_state(db: sqlite3.Connection) -> None:
+    """Create a durable cursor so every packet is examined exactly once."""
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS parser_state (
+            name TEXT PRIMARY KEY,
+            last_packet_id INTEGER NOT NULL
+        )
+        """
+    )
+    db.execute(
+        """
+        INSERT OR IGNORE INTO parser_state (name, last_packet_id)
+        SELECT 'positions', COALESCE(MAX(packet_id), 0)
+        FROM positions
+        """
+    )
+    db.commit()
+
+
 def parse_comment(
     comment: str,
 ) -> tuple[float | None, float | None, float | None]:
@@ -52,12 +72,12 @@ def process_pending(db: sqlite3.Connection) -> int:
             destination,
             raw_packet
         FROM packets
-        WHERE destination != 'OGNSDR'
-          AND NOT EXISTS (
-              SELECT 1
-              FROM positions
-              WHERE positions.packet_id = packets.id
-          )
+        WHERE id > (
+            SELECT last_packet_id
+            FROM parser_state
+            WHERE name = 'positions'
+        )
+          AND destination != 'OGNSDR'
         ORDER BY id
         LIMIT 500
         """
@@ -83,17 +103,20 @@ def process_pending(db: sqlite3.Connection) -> int:
         if latitude is None or longitude is None:
             continue
 
-        altitude_ft = parsed.get("altitude")
+        # aprslib normalizes APRS altitude to metres and speed to km/h.
+        # Store those values directly; converting them again would make both
+        # measurements incorrect.
+        altitude = parsed.get("altitude")
         altitude_m = (
-            float(altitude_ft) * 0.3048
-            if altitude_ft is not None
+            float(altitude)
+            if altitude is not None
             else None
         )
 
-        speed_knots = parsed.get("speed")
+        speed = parsed.get("speed")
         speed_kmh = (
-            float(speed_knots) * 1.852
-            if speed_knots is not None
+            float(speed)
+            if speed is not None
             else None
         )
 
@@ -103,7 +126,7 @@ def process_pending(db: sqlite3.Connection) -> int:
         climb_ms, snr_db, frequency_offset_khz = parse_comment(comment)
 
         try:
-            db.execute(
+            cursor = db.execute(
                 """
                 INSERT OR IGNORE INTO positions (
                     packet_id,
@@ -140,7 +163,7 @@ def process_pending(db: sqlite3.Connection) -> int:
                 ),
             )
 
-            if db.total_changes > 0:
+            if cursor.rowcount > 0:
                 inserted += 1
 
         except sqlite3.Error as error:
@@ -148,6 +171,16 @@ def process_pending(db: sqlite3.Connection) -> int:
                 f"SQLite error for packet {packet_id}: {error}",
                 flush=True,
             )
+
+    if rows:
+        db.execute(
+            """
+            UPDATE parser_state
+            SET last_packet_id = ?
+            WHERE name = 'positions'
+            """,
+            (rows[-1][0],),
+        )
 
     db.commit()
     return inserted
@@ -157,6 +190,7 @@ def main() -> None:
     with sqlite3.connect(DATABASE) as db:
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=NORMAL")
+        initialize_parser_state(db)
 
         while True:
             inserted = process_pending(db)
