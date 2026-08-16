@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Statistics · OGN Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='1.2.0') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/stats.css', v='1.2.0') }}">
+</head>
+<body>
+<main class="stats-page">
+    <header class="stats-header">
+        <div>
+            <h1>Statistics</h1>
+            <p>OGN Monitor · {{ station.name }}</p>
+        </div>
+        <div class="stats-header-actions">
+            <span id="stats-updated">Loading…</span>
+            <a href="/">Monitor</a>
+        </div>
+    </header>
+
+    <div class="stats-toolbar">
+    <nav class="stats-ranges" aria-label="Statistics time range">
+        <button data-range="2h">2 h</button>
+        <button data-range="8h">8 h</button>
+        <button class="active" data-range="24h">24 h</button>
+        <button data-range="7d">7 d</button>
+        <button data-range="30d">30 d</button>
+        <button data-range="90d">3 m</button>
+        <button data-range="1y">1 y</button>
+    </nav>
+    <div class="unit-selector" role="group" aria-label="Measurement system">
+        <button class="active" data-units="metric" aria-pressed="true">Metric</button>
+        <button data-units="imperial" aria-pressed="false">Imperial</button>
+    </div>
+    </div>
+
+    <section class="stats-summary" aria-label="Selected period summary">
+        <article><span>Packets</span><strong id="summary-packets">—</strong></article>
+        <article><span>Positions</span><strong id="summary-positions">—</strong></article>
+        <article><span>Aircraft</span><strong id="summary-aircraft">—</strong></article>
+        <article><span>Max. range</span><strong id="summary-range">—</strong></article>
+        <article><span>Avg. SNR</span><strong id="summary-snr">—</strong></article>
+        <article><span>Max. altitude</span><strong id="summary-altitude">—</strong></article>
+    </section>
+
+    <p id="stats-error" class="stats-error" hidden></p>
+
+    <section class="charts-grid">
+        <article class="chart-card chart-wide">
+            <div class="chart-heading"><div><h2>Traffic rate</h2><p>Packets and decoded positions per minute</p></div></div>
+            <svg id="chart-traffic" class="stats-chart" role="img" aria-label="Traffic rate chart"></svg>
+            <div class="chart-legend"><span style="--series:#38bdf8">Packets</span><span style="--series:#4ade80">Positions</span></div>
+        </article>
+        <article class="chart-card">
+            <div class="chart-heading"><div><h2>Aircraft seen</h2><p>Distinct aircraft per interval</p></div></div>
+            <svg id="chart-aircraft" class="stats-chart" role="img" aria-label="Aircraft seen chart"></svg>
+            <div class="chart-legend"><span style="--series:#a78bfa">Aircraft</span></div>
+        </article>
+        <article class="chart-card">
+            <div class="chart-heading"><div><h2>Reception range</h2><p>Average and maximum distance</p></div></div>
+            <svg id="chart-range" class="stats-chart" role="img" aria-label="Reception range chart"></svg>
+            <div class="chart-legend"><span style="--series:#2dd4bf">Maximum</span><span style="--series:#60a5fa">Average</span></div>
+        </article>
+        <article class="chart-card">
+            <div class="chart-heading"><div><h2>Signal quality</h2><p>Average and peak SNR</p></div></div>
+            <svg id="chart-signal" class="stats-chart" role="img" aria-label="Signal quality chart"></svg>
+            <div class="chart-legend"><span style="--series:#facc15">Peak</span><span style="--series:#fb923c">Average</span></div>
+        </article>
+        <article class="chart-card">
+            <div class="chart-heading"><div><h2>Altitude</h2><p>Average and maximum altitude AMSL</p></div></div>
+            <svg id="chart-altitude" class="stats-chart" role="img" aria-label="Altitude chart"></svg>
+            <div class="chart-legend"><span style="--series:#22d3ee">Maximum</span><span style="--series:#818cf8">Average</span></div>
+        </article>
+        <article class="chart-card">
+            <div class="chart-heading"><div><h2>Speed</h2><p>Average and maximum reported speed</p></div></div>
+            <svg id="chart-speed" class="stats-chart" role="img" aria-label="Speed chart"></svg>
+            <div class="chart-legend"><span style="--series:#f472b6">Maximum</span><span style="--series:#c084fc">Average</span></div>
+        </article>
+        <article class="chart-card chart-wide">
+            <div class="chart-heading"><div><h2>Traffic by protocol</h2><p>Decoded positions per minute</p></div></div>
+            <svg id="chart-protocols" class="stats-chart" role="img" aria-label="Protocol traffic chart"></svg>
+            <div class="chart-legend"><span style="--series:#3b82f6">FLARM</span><span style="--series:#22c55e">FANET</span><span style="--series:#f97316">ADS-L</span></div>
+        </article>
+    </section>
+</main>
+<footer class="site-footer">
+    <a href="https://github.com/MakeITBetterSAGL/ogn-monitor" target="_blank" rel="noopener noreferrer">GitHub</a>
+    <a href="https://github.com/MakeITBetterSAGL/ogn-monitor/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>
+    <span>Make IT Better SAGL</span>
+</footer>
+<script src="{{ url_for('static', filename='js/stats.js', v='1.2.0') }}"></script>
+</body>
+</html>

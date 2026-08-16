@@ -11,7 +11,10 @@ The dashboard provides:
 - aircraft-type icons and public OGN Devices Database metadata;
 - daily activity and sortable flight-session history;
 - map replay for recorded sessions;
+- high-resolution replay telemetry with point timing, altitude and speed;
 - all-time coverage views by density or altitude;
+- a responsive Statistics page with selectable time ranges and seven charts;
+- shared metric and imperial display units;
 - street, topographic and satellite base maps;
 - Raspberry Pi resource and service health information.
 
@@ -31,15 +34,17 @@ The examples below use synthetic aircraft, sessions and an approximate public ma
 
 <img src="docs/screenshots/dashboard-mobile.png" alt="OGN Monitor mobile dashboard" width="390">
 
+### Statistics
+
+![OGN Monitor statistics](docs/screenshots/statistics-desktop.png)
+
+### Statistics on mobile
+
+<img src="docs/screenshots/statistics-mobile.png" alt="OGN Monitor statistics on mobile" width="390">
+
 ## Public edition scope
 
-This repository intentionally does **not** include:
-
-- an automatic reboot or connectivity watchdog;
-- country-specific aircraft categories;
-- HTTPS, reverse-proxy or public Internet exposure configuration.
-
-It serves plain HTTP on port `5000`. Use it on a trusted local network. If you later expose it publicly, choose and maintain an appropriate reverse proxy and security policy yourself.
+This repository contains the portable OGN Monitor core and uses generic station settings. It serves the dashboard on local HTTP port `5000` and is intended for a trusted local network.
 
 ## Requirements
 
@@ -52,7 +57,7 @@ The decoder itself is not included. OGN Monitor starts at the decoder's local TC
 
 ## Quick start
 
-For a complete new-device walkthrough, including decoder verification, service checks, updates, backups and troubleshooting, read the **[Raspberry Pi installation guide](docs/INSTALLATION.md)**.
+For a complete new-device walkthrough, including decoder verification, service checks, updates and troubleshooting, read the **[Raspberry Pi installation guide](docs/INSTALLATION.md)**.
 
 ```sh
 git clone https://github.com/MakeITBetterSAGL/ogn-monitor.git
@@ -114,15 +119,9 @@ journalctl -u ogn-monitor -f
 sudo systemctl restart ogn-collector ogn-parser ogn-monitor
 ```
 
-## Data and backups
+## Data storage
 
-Runtime data is stored under `database/` and excluded from Git. To migrate an installation, stop the three services and copy:
-
-- the complete project directory;
-- `.env`;
-- `database/ogn.sqlite3` and any `-wal`/`-shm` files if present.
-
-For a consistent backup, stop the writer services first or use SQLite's backup command.
+Runtime data is stored under `database/` and excluded from Git. Receiver-specific settings are stored in `.env`, which is also excluded from Git.
 
 ## Privacy and external services
 

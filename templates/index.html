@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OGN Monitor</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20260811-replay-summary') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='1.2.0') }}">
 </head>
 <body>
     <main class="container">
@@ -14,7 +14,14 @@
                 <h1>OGN Monitor</h1>
                 <p class="subtitle">{{ station.name }}</p>
             </div>
-            <div id="update-state" class="update-state" aria-live="polite">Connecting…</div>
+            <div class="page-header-actions">
+                <div class="monitor-unit-selector" role="group" aria-label="Measurement system">
+                    <button class="active" type="button" data-monitor-units="metric" aria-pressed="true">Metric</button>
+                    <button type="button" data-monitor-units="imperial" aria-pressed="false">Imperial</button>
+                </div>
+                <a class="page-link" href="/stats">Statistics</a>
+                <div id="update-state" class="update-state" aria-live="polite">Connecting…</div>
+            </div>
         </header>
 
         <section class="stats-grid" aria-label="Live receiver statistics">
@@ -136,6 +143,9 @@
                     <div><small>Aircraft</small><strong id="replay-aircraft-code">—</strong></div>
                     <div><small>Type</small><strong id="replay-aircraft-type">—</strong></div>
                     <div><small>Protocol</small><strong id="replay-aircraft-protocol">—</strong></div>
+                    <div><small>Points</small><strong id="replay-point-count">—</strong></div>
+                    <div><small>Avg. interval</small><strong id="replay-average-interval">—</strong></div>
+                    <div><small>Min. interval</small><strong id="replay-minimum-interval">—</strong></div>
                 </div>
                 <div class="replay-row replay-action-row">
                     <label>Speed
@@ -150,6 +160,7 @@
                 </div>
                 <div class="replay-row replay-progress-row">
                     <span id="replay-time" class="replay-time">No session selected</span>
+                    <span id="replay-telemetry" class="replay-telemetry">— km/h · — m AMSL</span>
                     <input id="replay-timeline" class="replay-timeline" type="range" min="0" max="0" value="0" disabled aria-label="Replay timeline">
                 </div>
             </div>
@@ -326,6 +337,6 @@
         window.OGN_CONFIG = {{ {"station": station}|tojson }};
     </script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="{{ url_for('static', filename='js/app.js', v='20260811-replay-summary-history-fix') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js', v='1.2.0') }}"></script>
 </body>
 </html>

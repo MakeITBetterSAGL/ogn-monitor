@@ -4,6 +4,15 @@ const STATION = window.OGN_CONFIG.station;
 const DISPLAY_LOCALE = "en-GB";
 const DISPLAY_TIME_ZONE = STATION.timezone;
 const REFRESH = { stats: 5000, aircraft: 5000, tracks: 10000, system: 15000, history: 60000, archive: 300000 };
+const KM_TO_MILES = 0.621371;
+const METRES_TO_FEET = 3.28084;
+const METRES_PER_SECOND_TO_FEET_PER_MINUTE = 196.8504;
+let selectedUnits = "metric";
+try {
+    selectedUnits = localStorage.getItem("ogn-stats-units") === "imperial" ? "imperial" : "metric";
+} catch (error) {
+    console.debug("Unit preference storage unavailable", error);
+}
 const mapCard = document.querySelector(".map-card");
 const activeAircraftCard = document.querySelector(".table-card");
 if (mapCard && activeAircraftCard) mapCard.after(activeAircraftCard);
@@ -83,6 +92,24 @@ function formatNumber(value, decimals = 0) {
         ? "—" : Number(value).toFixed(decimals);
 }
 function formatInteger(value) { return Number(value || 0).toLocaleString(DISPLAY_LOCALE); }
+function convertedValue(value, imperialFactor) {
+    return value === null || value === undefined || !Number.isFinite(Number(value))
+        ? null : Number(value) * (selectedUnits === "imperial" ? imperialFactor : 1);
+}
+function formatDistance(value, decimals = 1) {
+    return `${formatNumber(convertedValue(value, KM_TO_MILES), decimals)} ${selectedUnits === "imperial" ? "mi" : "km"}`;
+}
+function formatAltitude(value) {
+    return `${formatNumber(convertedValue(value, METRES_TO_FEET))} ${selectedUnits === "imperial" ? "ft" : "m"}`;
+}
+function formatSpeed(value) {
+    return `${formatNumber(convertedValue(value, KM_TO_MILES))} ${selectedUnits === "imperial" ? "mph" : "km/h"}`;
+}
+function formatClimbRate(value) {
+    return selectedUnits === "imperial"
+        ? `${formatNumber(convertedValue(value, METRES_PER_SECOND_TO_FEET_PER_MINUTE))} ft/min`
+        : `${formatNumber(value, 1)} m/s`;
+}
 function protocolKey(protocol) { return String(protocol || "OTHER").toUpperCase().replace(/[^A-Z]/g, ""); }
 function protocolColor(protocol) {
     return { FLARM: "#3b82f6", FANET: "#22c55e", ADSL: "#f97316" }[protocolKey(protocol)] || "#a855f7";
@@ -151,6 +178,18 @@ function formatHistoryTime(value) {
     const timestamp = new Date(value);
     return Number.isNaN(timestamp.getTime()) ? "—" : timestamp.toLocaleTimeString(DISPLAY_LOCALE, { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: DISPLAY_TIME_ZONE });
 }
+function formatReplayTime(value) {
+    const timestamp = new Date(value);
+    return Number.isNaN(timestamp.getTime()) ? "—" : timestamp.toLocaleTimeString(DISPLAY_LOCALE, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: DISPLAY_TIME_ZONE });
+}
+function replayIntervalSeconds(index) {
+    if (index < 1 || index >= replayPoints.length) return null;
+    const interval = (new Date(replayPoints[index].received_at).getTime() - new Date(replayPoints[index - 1].received_at).getTime()) / 1000;
+    return Number.isFinite(interval) ? interval : null;
+}
+function formatInterval(value) {
+    return value === null || value === undefined || !Number.isFinite(Number(value)) ? "—" : `${Number(value).toFixed(Number(value) < 10 ? 2 : 1)} s`;
+}
 function formatEuropeanDate(value, includeWeekday = false) {
     const timestamp = new Date(String(value).length === 10 ? `${value}T12:00:00` : value);
     if (Number.isNaN(timestamp.getTime())) return "—";
@@ -181,7 +220,7 @@ function aircraftIcon(aircraft, selected = false) {
     const course = Number.isFinite(Number(aircraft.course_deg)) ? Number(aircraft.course_deg) : 0;
     return L.divIcon({
         className: "",
-        html: `<div class="aircraft-icon aircraft-type-${escapeHtml(aircraft.aircraft_type || "unknown")} ${protocolClass(aircraft.protocol)}${selected ? " aircraft-selected" : ""}" title="${escapeHtml(aircraftTypeLabel(aircraft.aircraft_type))}" style="transform:rotate(${course - 45}deg)">${aircraftGlyph(aircraft.aircraft_type)}</div>`,
+        html: `<div class="aircraft-icon aircraft-type-${escapeHtml(aircraft.aircraft_type || "unknown")} ${protocolClass(aircraft.protocol)}${selected ? " aircraft-selected" : ""}" title="${escapeHtml(aircraftTypeLabel(aircraft.aircraft_type))}" style="transform:rotate(${course - 90}deg)">${aircraftGlyph(aircraft.aircraft_type)}</div>`,
         iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -16]
     });
 }
@@ -190,11 +229,11 @@ function markerPopup(aircraft) {
         Aircraft type: ${escapeHtml(aircraftTypeLabel(aircraft.aircraft_type))}<br>
         Protocols: ${escapeHtml(aircraftProtocolLabel(aircraft))}<br>
         Source IDs: ${escapeHtml((aircraft.raw_aircraft_ids || [aircraft.aircraft_id]).join(", "))}<br>
-        Dist.: ${formatNumber(aircraft.distance_km, 1)} km<br>
-        Altitude: ${formatNumber(aircraft.altitude_m)} m<br>
-        Speed: ${formatNumber(aircraft.speed_kmh)} km/h<br>
+        Dist.: ${formatDistance(aircraft.distance_km)}<br>
+        Altitude: ${formatAltitude(aircraft.altitude_m)}<br>
+        Speed: ${formatSpeed(aircraft.speed_kmh)}<br>
         Course: ${formatNumber(aircraft.course_deg)}°<br>
-        Climb rate: ${formatNumber(aircraft.climb_ms, 1)} m/s<br>
+        Climb rate: ${formatClimbRate(aircraft.climb_ms)}<br>
         SNR: ${formatNumber(aircraft.snr_db, 1)} dB<br>
         Frequency offset: ${formatNumber(aircraft.frequency_offset_khz, 1)} kHz`;
 }
@@ -230,12 +269,12 @@ function updateDetails(aircraft) {
     details.innerHTML = `<div class="details-header"><div><h3>${escapeHtml(aircraft.aircraft_id)}</h3><span class="protocol-pill">${escapeHtml(aircraftProtocolLabel(aircraft))}</span></div><button class="details-close" type="button" aria-label="Close aircraft details">×</button></div>
         <dl class="details-grid">
             <div><dt>Aircraft type</dt><dd>${escapeHtml(aircraftTypeLabel(aircraft.aircraft_type))}</dd></div>
-            <div><dt>Dist.</dt><dd>${formatNumber(aircraft.distance_km, 1)} km</dd></div>
+            <div><dt>Dist.</dt><dd>${formatDistance(aircraft.distance_km)}</dd></div>
             <div><dt>Last received</dt><dd>${timestampAge(aircraft.received_at)}</dd></div>
-            <div><dt>Altitude</dt><dd>${formatNumber(aircraft.altitude_m)} m</dd></div>
-            <div><dt>Speed</dt><dd>${formatNumber(aircraft.speed_kmh)} km/h</dd></div>
+            <div><dt>Altitude</dt><dd>${formatAltitude(aircraft.altitude_m)}</dd></div>
+            <div><dt>Speed</dt><dd>${formatSpeed(aircraft.speed_kmh)}</dd></div>
             <div><dt>Course</dt><dd>${formatNumber(aircraft.course_deg)}°</dd></div>
-            <div><dt>Climb rate</dt><dd>${formatNumber(aircraft.climb_ms, 1)} m/s</dd></div>
+            <div><dt>Climb rate</dt><dd>${formatClimbRate(aircraft.climb_ms)}</dd></div>
             <div><dt>SNR</dt><dd>${formatNumber(aircraft.snr_db, 1)} dB</dd></div>
             <div><dt>Frequency offset</dt><dd>${formatNumber(aircraft.frequency_offset_khz, 1)} kHz</dd></div>
             <div class="details-wide"><dt>Position</dt><dd>${formatNumber(aircraft.latitude, 5)}, ${formatNumber(aircraft.longitude, 5)}</dd></div>
@@ -279,8 +318,8 @@ function updateTable(aircraftList) {
         row.classList.toggle("selected", aircraft.aircraft_id === selectedAircraftId);
         row.innerHTML = `<td><strong>${escapeHtml(aircraft.aircraft_id)}</strong></td>
             <td><span class="protocol-pill">${escapeHtml(aircraftProtocolLabel(aircraft))}</span></td>
-            <td>${formatNumber(aircraft.distance_km, 1)} km</td><td>${formatNumber(aircraft.altitude_m)} m</td>
-            <td>${formatNumber(aircraft.speed_kmh)} km/h</td><td>${formatNumber(aircraft.course_deg)}°</td>
+            <td>${formatDistance(aircraft.distance_km)}</td><td>${formatAltitude(aircraft.altitude_m)}</td>
+            <td>${formatSpeed(aircraft.speed_kmh)}</td><td>${formatNumber(aircraft.course_deg)}°</td>
             <td>${formatNumber(aircraft.snr_db, 1)} dB</td>`;
         const activate = () => selectAircraft(aircraft.aircraft_id);
         row.addEventListener("click", activate);
@@ -328,9 +367,9 @@ async function refreshHistory() {
     const history = await getJson("/api/history/today");
     document.getElementById("activity-packets").textContent = formatInteger(history.packets);
     document.getElementById("activity-aircraft").textContent = formatInteger(history.aircraft);
-    document.getElementById("activity-altitude").textContent = `${formatNumber(history.max_altitude_m)} m`;
-    document.getElementById("activity-speed").textContent = `${formatNumber(history.max_speed_kmh)} km/h`;
-    document.getElementById("activity-distance").textContent = `${formatNumber(history.max_distance_km, 1)} km`;
+    document.getElementById("activity-altitude").textContent = formatAltitude(history.max_altitude_m);
+    document.getElementById("activity-speed").textContent = formatSpeed(history.max_speed_kmh);
+    document.getElementById("activity-distance").textContent = formatDistance(history.max_distance_km);
     document.getElementById("activity-summary").textContent = `${formatInteger(history.packets)} packets · ${formatInteger(history.aircraft)} aircraft`;
 
     const maximumPackets = Math.max(1, ...history.hourly_packets.map(item => item.packets));
@@ -384,7 +423,7 @@ async function loadHistoryDay(day, scrollToCard = false) {
     document.getElementById("history-date").value = day;
     const detail = await getJson(`/api/history/day?date=${encodeURIComponent(day)}`);
     document.getElementById("history-day-title").textContent = formatEuropeanDate(day, true);
-    document.getElementById("history-day-distance").textContent = detail.max_distance_km === null ? "" : `Max. dist. ${formatNumber(detail.max_distance_km, 1)} km`;
+    document.getElementById("history-day-distance").textContent = detail.max_distance_km === null ? "" : `Max. dist. ${formatDistance(detail.max_distance_km)}`;
     const protocolContainer = document.getElementById("history-day-protocols");
     protocolContainer.replaceChildren();
     for (const protocol of detail.protocols) {
@@ -548,7 +587,7 @@ function renderHistorySessions() {
         const aircraftIdHtml = aircraft.has_metadata
             ? `<button type="button" class="aircraft-metadata-button" title="Show aircraft information">${escapeHtml(aircraft.aircraft_id)} <span>＋</span></button>`
             : `<strong>${escapeHtml(aircraft.aircraft_id)}</strong>`;
-        row.innerHTML = `<td>${aircraftIdHtml}</td><td>${escapeHtml(aircraftTypeLabel(aircraft.aircraft_type))}</td><td>#${formatInteger(aircraft.session_number)}</td><td>${escapeHtml(aircraftProtocolLabel(aircraft))}</td><td>${formatHistoryTime(aircraft.first_received)}</td><td>${formatHistoryTime(aircraft.last_received)}</td><td>${formatFlightDuration(aircraft.duration_seconds)}</td><td>${formatNumber(aircraft.min_distance_km, 1)} km</td><td>${formatNumber(aircraft.max_distance_km, 1)} km</td><td>${formatNumber(aircraft.max_altitude_m)} m</td><td>${formatNumber(aircraft.max_speed_kmh)} km/h</td><td>${formatNumber(aircraft.max_snr_db, 1)} dB</td><td>${formatInteger(aircraft.position_points)}</td><td><button type="button" class="replay-session-button">Replay</button></td>`;
+        row.innerHTML = `<td>${aircraftIdHtml}</td><td>${escapeHtml(aircraftTypeLabel(aircraft.aircraft_type))}</td><td>#${formatInteger(aircraft.session_number)}</td><td>${escapeHtml(aircraftProtocolLabel(aircraft))}</td><td>${formatHistoryTime(aircraft.first_received)}</td><td>${formatHistoryTime(aircraft.last_received)}</td><td>${formatFlightDuration(aircraft.duration_seconds)}</td><td>${formatDistance(aircraft.min_distance_km)}</td><td>${formatDistance(aircraft.max_distance_km)}</td><td>${formatAltitude(aircraft.max_altitude_m)}</td><td>${formatSpeed(aircraft.max_speed_kmh)}</td><td>${formatNumber(aircraft.max_snr_db, 1)} dB</td><td>${formatInteger(aircraft.position_points)}</td><td><button type="button" class="replay-session-button">Replay</button></td>`;
         const openReplay = () => runRefresh(() => openHistoryReplay(aircraft));
         row.addEventListener("click", openReplay);
         row.addEventListener("keydown", event => { if (!event.target.closest("button") && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); openReplay(); } });
@@ -574,9 +613,9 @@ async function refreshArchive() {
         summary.innerHTML = `<span class="history-day-date"><small>Date</small><strong>${formatCompactDayDate(day.date)}</strong></span>
             <span><small>Packets</small><strong>${formatInteger(day.packets)}</strong></span>
             <span><small>Aircraft</small><strong>${formatInteger(day.aircraft)}</strong></span>
-            <span class="history-day-secondary"><small>Max. altitude</small><strong>${formatNumber(day.max_altitude_m)} m</strong></span>
-            <span class="history-day-secondary"><small>Max. speed</small><strong>${formatNumber(day.max_speed_kmh)} km/h</strong></span>
-            <span class="history-day-secondary"><small>Max. dist.</small><strong>${formatNumber(day.max_distance_km, 1)} km</strong></span>
+            <span class="history-day-secondary"><small>Max. altitude</small><strong>${formatAltitude(day.max_altitude_m)}</strong></span>
+            <span class="history-day-secondary"><small>Max. speed</small><strong>${formatSpeed(day.max_speed_kmh)}</strong></span>
+            <span class="history-day-secondary"><small>Max. dist.</small><strong>${formatDistance(day.max_distance_km)}</strong></span>
             <span class="history-day-expand" aria-hidden="true">⌄</span>`;
         summary.addEventListener("click", () => {
             if (card.classList.contains("selected")) closeHistoryDay();
@@ -653,7 +692,8 @@ function clearReplayLayers() {
     document.getElementById("replay-flight-summary").hidden = true;
 }
 function replayPopup(point) {
-    return `<strong>${escapeHtml(point.aircraft_id)}</strong><br>Aircraft type: ${escapeHtml(aircraftTypeLabel(point.aircraft_type))}<br>Time: ${formatHistoryTime(point.received_at)}<br>Protocol: ${escapeHtml(point.protocol || "OTHER")}<br>Altitude: ${formatNumber(point.altitude_m)} m<br>Speed: ${formatNumber(point.speed_kmh)} km/h<br>Course: ${formatNumber(point.course_deg)}°<br>Climb rate: ${formatNumber(point.climb_ms, 1)} m/s`;
+    const interval = replayIntervalSeconds(replayIndex);
+    return `<strong>${escapeHtml(point.aircraft_id)}</strong><br>Aircraft type: ${escapeHtml(aircraftTypeLabel(point.aircraft_type))}<br>Time: ${formatReplayTime(point.received_at)}<br>Previous point: ${formatInterval(interval)}<br>Protocol: ${escapeHtml(point.protocol || "OTHER")}<br>Altitude: ${formatAltitude(point.altitude_m)}<br>Speed: ${formatSpeed(point.speed_kmh)}<br>Course: ${formatNumber(point.course_deg)}°<br>Climb rate: ${formatClimbRate(point.climb_ms)}`;
 }
 function renderReplayPoint(index) {
     if (!replayPoints.length) return;
@@ -666,7 +706,9 @@ function renderReplayPoint(index) {
     if (!replayTrack) replayTrack = L.polyline(coordinates, { color: protocolColor(point.protocol), weight: 4, opacity: .85, interactive: false }).addTo(map);
     else { replayTrack.setLatLngs(coordinates); replayTrack.setStyle({ color: protocolColor(point.protocol) }); }
     document.getElementById("replay-timeline").value = replayIndex;
-    document.getElementById("replay-time").textContent = `${formatHistoryTime(point.received_at)} · ${replayIndex + 1}/${replayPoints.length}`;
+    const interval = replayIntervalSeconds(replayIndex);
+    document.getElementById("replay-time").textContent = `${formatReplayTime(point.received_at)} · ${replayIndex + 1}/${replayPoints.length}${interval === null ? "" : ` · Δ ${formatInterval(interval)}`}`;
+    document.getElementById("replay-telemetry").textContent = `${formatSpeed(point.speed_kmh)} · ${formatAltitude(point.altitude_m)} AMSL`;
 }
 function replayFrame(now) {
     if (!replayPlaying || replayPoints.length < 2) return;
@@ -716,6 +758,9 @@ async function loadReplaySession() {
         document.getElementById("replay-aircraft-code").textContent = data.aircraft_id;
         document.getElementById("replay-aircraft-type").textContent = aircraftTypes.join(" / ");
         document.getElementById("replay-aircraft-protocol").textContent = protocols.join(" / ");
+        document.getElementById("replay-point-count").textContent = data.sampled ? `${formatInteger(data.displayed_points)}/${formatInteger(data.source_points)}` : formatInteger(data.source_points);
+        document.getElementById("replay-average-interval").textContent = formatInterval(data.average_interval_seconds);
+        document.getElementById("replay-minimum-interval").textContent = formatInterval(data.minimum_interval_seconds);
         document.getElementById("replay-flight-summary").hidden = false;
     }
     const timeline = document.getElementById("replay-timeline");
@@ -738,6 +783,7 @@ function applyCoverageStyle(style) {
     const maximumAltitude = Number(coverageSummary.max_altitude_m);
     coverageLayer.eachLayer(marker => {
         const cell = marker.coverageCell;
+        marker.setPopupContent(coveragePopup(cell));
         if (style === "altitude") {
             const altitude = Number(cell.avg_altitude_m);
             const ratio = Number.isFinite(altitude) && maximumAltitude > minimumAltitude
@@ -749,8 +795,11 @@ function applyCoverageStyle(style) {
         }
     });
     document.getElementById("coverage-scale").textContent = style === "altitude"
-        ? `Purple intensity shows average altitude ASL · ${formatNumber(minimumAltitude)}–${formatNumber(maximumAltitude)} m`
+        ? `Purple intensity shows average altitude ASL · ${formatAltitude(minimumAltitude)}–${formatAltitude(maximumAltitude)}`
         : "Red intensity shows positions per cell";
+}
+function coveragePopup(cell) {
+    return `<strong>Coverage cell</strong><br>${formatInteger(cell.points)} recorded positions<br>Average altitude: ${formatAltitude(cell.avg_altitude_m)} ASL<br>Altitude range: ${formatAltitude(cell.min_altitude_m)}–${formatAltitude(cell.max_altitude_m)} ASL<br>${formatNumber(cell.latitude, 3)}, ${formatNumber(cell.longitude, 3)}`;
 }
 async function loadCoverage() {
     if (coverageLayer && coverageSummary) {
@@ -769,7 +818,7 @@ async function loadCoverage() {
                 fillOpacity: .5,
             });
             marker.coverageCell = cell;
-            marker.bindPopup(`<strong>Coverage cell</strong><br>${formatInteger(count)} recorded positions<br>Average altitude: ${formatNumber(cell.avg_altitude_m)} m ASL<br>Altitude range: ${formatNumber(cell.min_altitude_m)}–${formatNumber(cell.max_altitude_m)} m ASL<br>${formatNumber(cell.latitude, 3)}, ${formatNumber(cell.longitude, 3)}`).addTo(coverageLayer);
+            marker.bindPopup(coveragePopup(cell)).addTo(coverageLayer);
         }
         coverageLayer.addTo(map);
     }
@@ -804,9 +853,37 @@ async function runRefresh(task) {
     catch (error) { console.error("Live update failed:", error); setConnectionState("Update unavailable", true); }
 }
 
+function syncMonitorUnitSelector() {
+    document.querySelectorAll("[data-monitor-units]").forEach(button => {
+        const active = button.dataset.monitorUnits === selectedUnits;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", String(active));
+    });
+    if (!replayPoints.length) document.getElementById("replay-telemetry").textContent = selectedUnits === "imperial" ? "— mph · — ft AMSL" : "— km/h · — m AMSL";
+}
+async function refreshDisplayUnits() {
+    syncMonitorUnitSelector();
+    renderAircraft();
+    for (const entry of aircraftMarkers.values()) entry.marker.setPopupContent(markerPopup(entry.data));
+    if (selectedAircraftId && aircraftMarkers.has(selectedAircraftId)) updateDetails(aircraftMarkers.get(selectedAircraftId).data);
+    if (replayPoints.length) renderReplayPoint(replayIndex);
+    if (coverageLayer && coverageSummary) applyCoverageStyle(coverageStyle);
+    await Promise.all([refreshHistory(), refreshArchive()]);
+    if (selectedHistoryDate) await loadHistoryDay(selectedHistoryDate);
+}
+
+syncMonitorUnitSelector();
 syncHistorySortControls();
 document.getElementById("replay-speed").value = "10";
 Promise.all([runRefresh(refreshStats), runRefresh(refreshAircraft), runRefresh(refreshTracks), runRefresh(refreshSystem), runRefresh(refreshHistory), runRefresh(refreshArchive)]);
+document.querySelectorAll("[data-monitor-units]").forEach(button => button.addEventListener("click", () => {
+    if (button.dataset.monitorUnits === selectedUnits) return;
+    selectedUnits = button.dataset.monitorUnits;
+    try { localStorage.setItem("ogn-stats-units", selectedUnits); } catch (error) {
+        console.debug("Unit preference storage unavailable", error);
+    }
+    runRefresh(refreshDisplayUnits);
+}));
 document.getElementById("aircraft-search").addEventListener("input", event => {
     searchTerm = event.target.value.trim().toUpperCase();
     renderAircraft();

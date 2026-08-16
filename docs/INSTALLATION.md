@@ -201,23 +201,7 @@ sudo systemctl restart ogn-collector ogn-parser ogn-monitor
 
 Read the release notes before updating in case a future version contains additional migration steps.
 
-## 10. Backups and migration
-
-The configuration is stored in `.env`. Historical packets and positions are stored in `database/ogn.sqlite3`.
-
-For a simple consistent backup:
-
-```sh
-cd ~/ogn-monitor
-sudo systemctl stop ogn-monitor ogn-parser ogn-collector
-cp .env ~/ogn-monitor.env.backup
-cp database/ogn.sqlite3 ~/ogn-monitor.sqlite3.backup
-sudo systemctl start ogn-collector ogn-parser ogn-monitor
-```
-
-Store those two backup files somewhere other than the Raspberry Pi. They are deliberately excluded from Git.
-
-## 11. Troubleshooting
+## 10. Troubleshooting
 
 ### The portal does not open
 

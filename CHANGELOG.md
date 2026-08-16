@@ -4,6 +4,30 @@ All notable changes to OGN Monitor are documented in this file.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-08-16
+
+### Added
+
+- Added a responsive Statistics page with selectable ranges from 2 hours to 1 year.
+- Added charts for traffic rate, aircraft seen, reception range, signal quality, altitude, speed and protocol traffic.
+- Added a shared Metric / Imperial selector for the Monitor and Statistics pages.
+- Added high-resolution Replay telemetry with point timing, altitude, speed and interval summaries.
+- Added anonymized desktop and mobile Statistics screenshots generated from synthetic data.
+
+### Changed
+
+- Increased the Replay display limit while retaining browser-side protection for exceptionally large sessions.
+- Improved Statistics chart grids, dual vertical axes, legends and mobile readability.
+- Kept Receiver health based on generic Linux resource and standard service checks.
+
+### Fixed
+
+- Corrected aircraft icon orientation by using the proper 90-degree heading offset.
+
+### Related issues
+
+- [#3 - Aircraft icon heading offset](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/3), reported by [@whallmann](https://github.com/whallmann).
+
 ## [1.1.2] - 2026-08-15
 
 ### Fixed

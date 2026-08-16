@@ -33,6 +33,7 @@ SYSTEM_CACHE_SECONDS = 15
 HISTORY_CACHE_SECONDS = 60
 ARCHIVE_CACHE_SECONDS = 300
 COVERAGE_CACHE_SECONDS = 3600
+STATISTICS_CACHE_SECONDS = 60
 LOCAL_TIMEZONE = ZoneInfo(os.getenv("OGN_TIMEZONE", "UTC"))
 AIRCRAFT_ID_RE = re.compile(r"\bid([0-9A-Fa-f]{2})[0-9A-Fa-f]{6}\b")
 AIRCRAFT_TYPES = {
@@ -65,6 +66,8 @@ archive_cache = {}
 archive_cache_lock = Lock()
 coverage_cache = {"value": None, "expires_at": 0.0}
 coverage_cache_lock = Lock()
+statistics_cache = {}
+statistics_cache_lock = Lock()
 ddb_cache = {"mtime": None, "devices": {}}
 ddb_cache_lock = Lock()
 
@@ -72,6 +75,7 @@ ddb_cache_lock = Lock()
 def open_database() -> sqlite3.Connection:
     database = sqlite3.connect(DATABASE, timeout=5)
     database.row_factory = sqlite3.Row
+    database.create_function("distance_km", 4, distance_km)
     return database
 
 
@@ -901,7 +905,9 @@ def get_replay_session(selected_day, aircraft_id, session_number):
         return None
 
     selected = sessions[session_number - 1]
-    maximum_points = 1000
+    # Preserve high-resolution tracks for ordinary sessions. This safety cap
+    # only protects the browser from exceptionally large sessions.
+    maximum_points = 10000
     step = max(1, (len(selected) + maximum_points - 1) // maximum_points)
     sampled = list(selected[::step])
     if sampled[-1]["received_at"] != selected[-1]["received_at"]:
@@ -922,11 +928,24 @@ def get_replay_session(selected_day, aircraft_id, session_number):
         }
         for row in sampled
     ]
+    intervals = [
+        (parse_timestamp(selected[index]["received_at"]) -
+         parse_timestamp(selected[index - 1]["received_at"])).total_seconds()
+        for index in range(1, len(selected))
+    ]
     return {
         "date": selected_day.isoformat(),
         "aircraft_id": identity,
         "session_number": session_number,
         "source_points": len(selected),
+        "displayed_points": len(points),
+        "sampled": step > 1,
+        "average_interval_seconds": (
+            round(sum(intervals) / len(intervals), 2) if intervals else None
+        ),
+        "minimum_interval_seconds": (
+            round(min(intervals), 2) if intervals else None
+        ),
         "points": points,
     }
 
@@ -986,6 +1005,164 @@ def get_coverage():
         return coverage_cache["value"]
 
 
+STATISTICS_RANGES = {
+    "2h": (timedelta(hours=2), 5 * 60),
+    "8h": (timedelta(hours=8), 15 * 60),
+    "24h": (timedelta(hours=24), 30 * 60),
+    "7d": (timedelta(days=7), 2 * 60 * 60),
+    "30d": (timedelta(days=30), 6 * 60 * 60),
+    "90d": (timedelta(days=90), 24 * 60 * 60),
+    "1y": (timedelta(days=365), 24 * 60 * 60),
+}
+
+
+def rounded(value, digits=1):
+    return round(value, digits) if value is not None else None
+
+
+def calculate_statistics(range_key):
+    duration, bucket_seconds = STATISTICS_RANGES[range_key]
+    now = datetime.now(timezone.utc)
+    cutoff = now - duration
+    cutoff_iso = cutoff.isoformat()
+
+    with open_database() as db:
+        packet_rows = db.execute(
+            """
+            SELECT
+                (CAST(strftime('%s', received_at) AS INTEGER) / ?) * ? AS bucket,
+                COUNT(*) AS packets
+            FROM packets
+            WHERE received_at >= ?
+            GROUP BY bucket
+            ORDER BY bucket
+            """,
+            (bucket_seconds, bucket_seconds, cutoff_iso),
+        ).fetchall()
+
+        position_rows = db.execute(
+            """
+            SELECT
+                (CAST(strftime('%s', received_at) AS INTEGER) / ?) * ? AS bucket,
+                COUNT(*) AS positions,
+                COUNT(DISTINCT aircraft_id) AS aircraft,
+                AVG(distance_km(?, ?, latitude, longitude)) AS avg_distance_km,
+                MAX(distance_km(?, ?, latitude, longitude)) AS max_distance_km,
+                AVG(snr_db) AS avg_snr_db,
+                MAX(snr_db) AS max_snr_db,
+                AVG(altitude_m) AS avg_altitude_m,
+                MAX(altitude_m) AS max_altitude_m,
+                AVG(speed_kmh) AS avg_speed_kmh,
+                MAX(speed_kmh) AS max_speed_kmh,
+                SUM(CASE WHEN protocol = 'FLARM' THEN 1 ELSE 0 END) AS flarm,
+                SUM(CASE WHEN protocol = 'FANET' THEN 1 ELSE 0 END) AS fanet,
+                SUM(CASE WHEN protocol = 'ADS-L' THEN 1 ELSE 0 END) AS adsl,
+                SUM(CASE WHEN protocol NOT IN ('FLARM', 'FANET', 'ADS-L')
+                         OR protocol IS NULL THEN 1 ELSE 0 END) AS other
+            FROM positions
+            WHERE received_at >= ?
+              AND latitude BETWEEN -90 AND 90
+              AND longitude BETWEEN -180 AND 180
+            GROUP BY bucket
+            ORDER BY bucket
+            """,
+            (
+                bucket_seconds, bucket_seconds,
+                STATION_LATITUDE, STATION_LONGITUDE,
+                STATION_LATITUDE, STATION_LONGITUDE,
+                cutoff_iso,
+            ),
+        ).fetchall()
+
+        summary = db.execute(
+            """
+            SELECT
+                COUNT(*) AS positions,
+                COUNT(DISTINCT aircraft_id) AS aircraft,
+                MAX(distance_km(?, ?, latitude, longitude)) AS max_distance_km,
+                AVG(snr_db) AS avg_snr_db,
+                MAX(altitude_m) AS max_altitude_m,
+                MAX(speed_kmh) AS max_speed_kmh
+            FROM positions
+            WHERE received_at >= ?
+              AND latitude BETWEEN -90 AND 90
+              AND longitude BETWEEN -180 AND 180
+            """,
+            (STATION_LATITUDE, STATION_LONGITUDE, cutoff_iso),
+        ).fetchone()
+
+    packets_by_bucket = {
+        int(row["bucket"]): row["packets"] for row in packet_rows
+        if row["bucket"] is not None
+    }
+    positions_by_bucket = {
+        int(row["bucket"]): row for row in position_rows
+        if row["bucket"] is not None
+    }
+    first_bucket = int(cutoff.timestamp()) // bucket_seconds * bucket_seconds
+    last_bucket = int(now.timestamp()) // bucket_seconds * bucket_seconds
+    series = []
+    packet_total = 0
+
+    for bucket in range(first_bucket, last_bucket + 1, bucket_seconds):
+        row = positions_by_bucket.get(bucket)
+        packets = packets_by_bucket.get(bucket, 0)
+        packet_total += packets
+        series.append(
+            {
+                "timestamp": datetime.fromtimestamp(bucket, timezone.utc).isoformat(),
+                "packets": packets,
+                "positions": row["positions"] if row else 0,
+                "aircraft": row["aircraft"] if row else 0,
+                "avg_distance_km": rounded(row["avg_distance_km"]) if row else None,
+                "max_distance_km": rounded(row["max_distance_km"]) if row else None,
+                "avg_snr_db": rounded(row["avg_snr_db"]) if row else None,
+                "max_snr_db": rounded(row["max_snr_db"]) if row else None,
+                "avg_altitude_m": rounded(row["avg_altitude_m"], 0) if row else None,
+                "max_altitude_m": rounded(row["max_altitude_m"], 0) if row else None,
+                "avg_speed_kmh": rounded(row["avg_speed_kmh"], 0) if row else None,
+                "max_speed_kmh": rounded(row["max_speed_kmh"], 0) if row else None,
+                "flarm": row["flarm"] if row else 0,
+                "fanet": row["fanet"] if row else 0,
+                "adsl": row["adsl"] if row else 0,
+                "other": row["other"] if row else 0,
+            }
+        )
+
+    return {
+        "range": range_key,
+        "bucket_seconds": bucket_seconds,
+        "generated_at": now.isoformat(),
+        "summary": {
+            "packets": packet_total,
+            "positions": summary["positions"],
+            "aircraft": summary["aircraft"],
+            "max_distance_km": rounded(summary["max_distance_km"]),
+            "avg_snr_db": rounded(summary["avg_snr_db"]),
+            "max_altitude_m": rounded(summary["max_altitude_m"], 0),
+            "max_speed_kmh": rounded(summary["max_speed_kmh"], 0),
+        },
+        "series": series,
+    }
+
+
+def get_statistics(range_key):
+    now = monotonic()
+    cached = statistics_cache.get(range_key)
+    if cached and now < cached["expires_at"]:
+        return cached["value"]
+    with statistics_cache_lock:
+        now = monotonic()
+        cached = statistics_cache.get(range_key)
+        if not cached or now >= cached["expires_at"]:
+            cached = {
+                "value": calculate_statistics(range_key),
+                "expires_at": now + STATISTICS_CACHE_SECONDS,
+            }
+            statistics_cache[range_key] = cached
+        return cached["value"]
+
+
 @app.after_request
 def disable_api_cache(response):
     if response.content_type.startswith("application/json"):
@@ -1007,9 +1184,25 @@ def index():
     )
 
 
+@app.route("/stats")
+def statistics():
+    return render_template(
+        "stats.html",
+        station={"name": STATION_NAME, "timezone": str(LOCAL_TIMEZONE)},
+    )
+
+
 @app.route("/api/stats")
 def api_stats():
     return jsonify(get_stats())
+
+
+@app.route("/api/statistics")
+def api_statistics():
+    range_key = request.args.get("range", "24h")
+    if range_key not in STATISTICS_RANGES:
+        return jsonify({"error": "Invalid statistics range"}), 400
+    return jsonify(get_statistics(range_key))
 
 
 @app.route("/api/aircraft")
