@@ -304,7 +304,7 @@
 
         <details class="card health-card">
             <summary class="section-heading health-toggle">
-                <h2>Receiver health</h2>
+                <h2>{{ "Application health" if runtime_mode == "docker" else "Receiver health" }}</h2>
                 <span class="health-toggle-right">
                     <span id="health-summary" class="health-summary">Checking…</span>
                     <span class="health-chevron" aria-hidden="true">⌄</span>
@@ -312,16 +312,17 @@
             </summary>
             <div class="health-content">
                 <div class="health-grid">
-                    <div class="health-item"><span>Temperature</span><strong id="health-temperature">—</strong></div>
-                    <div class="health-item"><span>CPU load</span><strong id="health-load">—</strong></div>
-                    <div class="health-item"><span>Memory available</span><strong id="health-memory">—</strong></div>
+                    <div class="health-item"><span>{{ "Decoder feed" if runtime_mode == "docker" else "Temperature" }}</span><strong id="health-temperature">—</strong></div>
+                    <div class="health-item"><span>{{ "Collector" if runtime_mode == "docker" else "CPU load" }}</span><strong id="health-load">—</strong></div>
+                    <div class="health-item"><span>{{ "Parser backlog" if runtime_mode == "docker" else "Memory available" }}</span><strong id="health-memory">—</strong></div>
                     <div class="health-item"><span>Disk free</span><strong id="health-disk">—</strong></div>
-                    <div class="health-item"><span>Uptime</span><strong id="health-uptime">—</strong></div>
+                    <div class="health-item"><span>{{ "App uptime" if runtime_mode == "docker" else "Uptime" }}</span><strong id="health-uptime">—</strong></div>
                     <div class="health-item"><span>Database size</span><strong id="health-database">—</strong></div>
                 </div>
                 <div class="service-strip" aria-label="Service status">
                     <span><i id="service-decoder" class="service-dot"></i>Decoder</span>
                     <span><i id="service-collector" class="service-dot"></i>Collector</span>
+                    {% if runtime_mode == "docker" %}<span><i id="service-parser" class="service-dot"></i>Parser</span>{% endif %}
                     <span><i id="service-monitor" class="service-dot"></i>Monitor</span>
                 </div>
             </div>

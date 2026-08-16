@@ -1,0 +1,17 @@
+.git
+.github
+.env
+docker.env
+.venv
+.tools
+.demo-packages
+__pycache__
+*.py[cod]
+*.log
+database/*
+!database/.gitkeep
+demo_seed.py
+docs
+tests
+services
+scripts

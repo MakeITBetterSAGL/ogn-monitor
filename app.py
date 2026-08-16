@@ -17,7 +17,9 @@ from flask import Flask, jsonify, render_template, request
 
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE = Path(os.getenv("OGN_DATABASE", BASE_DIR / "database" / "ogn.sqlite3"))
-OGN_DDB_FILE = BASE_DIR / "database" / "ogn-ddb.json"
+OGN_DDB_FILE = Path(
+    os.getenv("OGN_DDB_FILE", BASE_DIR / "database" / "ogn-ddb.json")
+)
 
 STATION_NAME = os.getenv("OGN_STATION_NAME", "My OGN Station")
 STATION_LATITUDE = float(os.getenv("OGN_STATION_LATITUDE", "0"))
@@ -28,6 +30,7 @@ ONLINE_SECONDS = int(os.getenv("OGN_ONLINE_SECONDS", "120"))
 FLIGHT_SESSION_GAP_SECONDS = int(os.getenv("OGN_SESSION_GAP_MINUTES", "20")) * 60
 DECODER_HOST = os.getenv("OGN_DECODER_HOST", "127.0.0.1")
 DECODER_PORT = int(os.getenv("OGN_DECODER_PORT", "50001"))
+RUNTIME_MODE = os.getenv("OGN_RUNTIME_MODE", "native").strip().lower()
 STATS_CACHE_SECONDS = 5
 SYSTEM_CACHE_SECONDS = 15
 HISTORY_CACHE_SECONDS = 60
@@ -70,6 +73,7 @@ statistics_cache = {}
 statistics_cache_lock = Lock()
 ddb_cache = {"mtime": None, "devices": {}}
 ddb_cache_lock = Lock()
+APPLICATION_STARTED_AT = monotonic()
 
 
 def open_database() -> sqlite3.Connection:
@@ -331,7 +335,10 @@ def get_stats():
 
 
 def process_running(command_fragment):
-    for entry in Path("/proc").iterdir():
+    proc_path = Path("/proc")
+    if not proc_path.exists():
+        return False
+    for entry in proc_path.iterdir():
         if not entry.name.isdigit():
             continue
         try:
@@ -359,6 +366,7 @@ def calculate_system_health():
     load_1, load_5, load_15 = os.getloadavg()
 
     return {
+        "mode": "receiver",
         "temperature_c": temperature_c,
         "load": {
             "one_minute": round(load_1, 2),
@@ -384,6 +392,67 @@ def calculate_system_health():
     }
 
 
+def calculate_application_health():
+    database_healthy = False
+    last_packet_seconds = None
+    parser_backlog = None
+
+    try:
+        with sqlite3.connect(DATABASE, timeout=2) as database:
+            database.execute("SELECT 1").fetchone()
+            tables = {
+                row[0] for row in database.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+            if "packets" in tables:
+                packet = database.execute(
+                    "SELECT MAX(id), MAX(received_at) FROM packets"
+                ).fetchone()
+                if packet and packet[1]:
+                    received_at = parse_timestamp(packet[1])
+                    if received_at is not None:
+                        last_packet_seconds = max(
+                            0,
+                            int(
+                                (
+                                    datetime.now(timezone.utc) - received_at
+                                ).total_seconds()
+                            ),
+                        )
+                if "parser_state" in tables and packet and packet[0] is not None:
+                    state = database.execute(
+                        "SELECT last_packet_id FROM parser_state WHERE name = 'positions'"
+                    ).fetchone()
+                    if state is not None:
+                        parser_backlog = max(0, int(packet[0]) - int(state[0]))
+            database_healthy = True
+    except (OSError, sqlite3.Error, ValueError, TypeError):
+        database_healthy = False
+
+    data_path = DATABASE.parent
+    data_path.mkdir(parents=True, exist_ok=True)
+    disk = shutil.disk_usage(data_path)
+    services = {
+        "decoder": receiver_is_online(),
+        "collector": process_running(str(BASE_DIR / "collector.py")),
+        "parser": process_running(str(BASE_DIR / "parser.py")),
+        "monitor": True,
+    }
+
+    return {
+        "mode": "application",
+        "database_healthy": database_healthy,
+        "database_writable": os.access(data_path, os.W_OK),
+        "database_bytes": DATABASE.stat().st_size if DATABASE.exists() else 0,
+        "disk": {"total_bytes": disk.total, "free_bytes": disk.free},
+        "uptime_seconds": int(monotonic() - APPLICATION_STARTED_AT),
+        "last_packet_seconds": last_packet_seconds,
+        "parser_backlog": parser_backlog,
+        "services": services,
+    }
+
+
 def get_system_health():
     now = monotonic()
     if system_cache["value"] is not None and now < system_cache["expires_at"]:
@@ -392,7 +461,11 @@ def get_system_health():
     with system_cache_lock:
         now = monotonic()
         if system_cache["value"] is None or now >= system_cache["expires_at"]:
-            system_cache["value"] = calculate_system_health()
+            system_cache["value"] = (
+                calculate_application_health()
+                if RUNTIME_MODE == "docker"
+                else calculate_system_health()
+            )
             system_cache["expires_at"] = now + SYSTEM_CACHE_SECONDS
         return system_cache["value"]
 
@@ -1181,6 +1254,7 @@ def index():
             "longitude": STATION_LONGITUDE,
             "timezone": str(LOCAL_TIMEZONE),
         },
+        runtime_mode=RUNTIME_MODE,
     )
 
 
@@ -1223,6 +1297,18 @@ def api_aircraft():
 @app.route("/api/system")
 def api_system():
     return jsonify(get_system_health())
+
+
+@app.route("/api/health")
+def api_health():
+    health = get_system_health()
+    services = health.get("services", {})
+    healthy = bool(services.get("monitor"))
+    if health.get("mode") == "application":
+        healthy = healthy and bool(health.get("database_healthy"))
+        healthy = healthy and bool(services.get("collector"))
+        healthy = healthy and bool(services.get("parser"))
+    return jsonify({"status": "ok" if healthy else "degraded"}), 200 if healthy else 503
 
 
 @app.route("/api/history/today")

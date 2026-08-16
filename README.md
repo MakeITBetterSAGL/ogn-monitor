@@ -16,7 +16,7 @@ The dashboard provides:
 - a responsive Statistics page with selectable time ranges and seven charts;
 - shared metric and imperial display units;
 - street, topographic and satellite base maps;
-- Raspberry Pi resource and service health information.
+- Receiver health on native Raspberry Pi installations and container-safe Application health in Docker.
 
 ## Screenshots
 
@@ -55,6 +55,9 @@ This repository contains the portable OGN Monitor core and uses generic station 
 
 The decoder itself is not included. OGN Monitor starts at the decoder's local TCP output.
 
+Docker is also supported for the OGN Monitor application. The decoder and its
+radio drivers remain on the host. See the **[Docker guide](docs/DOCKER.md)**.
+
 ## Quick start
 
 For a complete new-device walkthrough, including decoder verification, service checks, updates and troubleshooting, read the **[Raspberry Pi installation guide](docs/INSTALLATION.md)**.
@@ -85,6 +88,21 @@ sudo systemctl enable --now ogn-collector ogn-parser ogn-monitor ogn-ddb-update.
 
 Open `http://<raspberry-pi-address>:5000`.
 
+### Docker quick start
+
+```sh
+cp docker.env.example docker.env
+# Edit docker.env before starting the application.
+docker compose --env-file docker.env up --build -d
+```
+
+Open `http://<docker-host-address>:5000` (or the `OGN_HTTP_PORT` configured in
+`docker.env`). Keep using `--env-file docker.env` in Compose commands so the
+host-port setting is applied. The named `ogn-data` volume keeps the
+SQLite database and public aircraft metadata when the container is recreated.
+The complete setup and decoder-network requirements are documented in
+[`docs/DOCKER.md`](docs/DOCKER.md).
+
 ## Configuration
 
 Copy [`config.example.env`](config.example.env) to `.env`. The service reads this file at startup.
@@ -101,6 +119,8 @@ Copy [`config.example.env`](config.example.env) to `.env`. The service reads thi
 | `OGN_TRACK_MINUTES` | `30` | Recent-track window |
 | `OGN_ONLINE_SECONDS` | `120` | Packet freshness used for active traffic |
 | `OGN_SESSION_GAP_MINUTES` | `20` | Gap that separates two flight sessions |
+| `OGN_DDB_FILE` | `database/ogn-ddb.json` | Public aircraft metadata file; Docker uses `/data/ogn-ddb.json` |
+| `OGN_RUNTIME_MODE` | `native` | Selects native Receiver health or Docker Application health |
 
 ## Services
 
@@ -122,6 +142,9 @@ sudo systemctl restart ogn-collector ogn-parser ogn-monitor
 ## Data storage
 
 Runtime data is stored under `database/` and excluded from Git. Receiver-specific settings are stored in `.env`, which is also excluded from Git.
+
+Docker stores runtime data in the named `ogn-data` volume and reads
+receiver-specific settings from the ignored `docker.env` file.
 
 ## Privacy and external services
 

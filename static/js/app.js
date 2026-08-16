@@ -347,21 +347,30 @@ async function refreshStats() {
 }
 async function refreshSystem() {
     const system = await getJson("/api/system");
-    document.getElementById("health-temperature").textContent = system.temperature_c === null ? "—" : `${formatNumber(system.temperature_c, 1)} °C`;
-    document.getElementById("health-load").textContent = `${formatNumber(system.load.one_minute, 2)} / ${system.load.cpu_count}`;
-    document.getElementById("health-memory").textContent = formatBytes(system.memory.available_bytes);
+    const applicationMode = system.mode === "application";
+    if (applicationMode) {
+        document.getElementById("health-temperature").textContent = system.services.decoder ? "Connected" : "Unavailable";
+        document.getElementById("health-load").textContent = system.services.collector ? "Running" : "Stopped";
+        document.getElementById("health-memory").textContent = system.parser_backlog === null ? "—" : formatInteger(system.parser_backlog);
+    } else {
+        document.getElementById("health-temperature").textContent = system.temperature_c === null ? "—" : `${formatNumber(system.temperature_c, 1)} °C`;
+        document.getElementById("health-load").textContent = `${formatNumber(system.load.one_minute, 2)} / ${system.load.cpu_count}`;
+        document.getElementById("health-memory").textContent = formatBytes(system.memory.available_bytes);
+    }
     document.getElementById("health-disk").textContent = formatBytes(system.disk.free_bytes);
     document.getElementById("health-uptime").textContent = formatDuration(system.uptime_seconds);
     document.getElementById("health-database").textContent = formatBytes(system.database_bytes);
-    for (const service of ["decoder", "collector", "monitor"]) {
-        document.getElementById(`service-${service}`).classList.toggle("running", Boolean(system.services[service]));
+    for (const service of ["decoder", "collector", "parser", "monitor"]) {
+        const indicator = document.getElementById(`service-${service}`);
+        if (indicator) indicator.classList.toggle("running", Boolean(system.services[service]));
     }
     const allRunning = Object.values(system.services).every(Boolean);
-    const warm = system.temperature_c !== null && system.temperature_c >= 75;
+    const warm = !applicationMode && system.temperature_c !== null && system.temperature_c >= 75;
+    const databaseReady = !applicationMode || (system.database_healthy && system.database_writable);
     const summary = document.getElementById("health-summary");
-    summary.textContent = allRunning ? (warm ? "Running warm" : "All systems operational") : "Service attention required";
-    summary.classList.toggle("healthy", allRunning && !warm);
-    summary.classList.toggle("warning", warm || !allRunning);
+    summary.textContent = allRunning && databaseReady ? (warm ? "Running warm" : "All systems operational") : "Service attention required";
+    summary.classList.toggle("healthy", allRunning && databaseReady && !warm);
+    summary.classList.toggle("warning", warm || !allRunning || !databaseReady);
 }
 async function refreshHistory() {
     const history = await getJson("/api/history/today");

@@ -4,6 +4,18 @@ All notable changes to OGN Monitor are documented in this file.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Added an initial Docker and Docker Compose deployment for `amd64` and `arm64` hosts.
+- Added persistent container storage for SQLite data and public aircraft metadata.
+- Added container supervision and an HTTP health endpoint.
+
+### Changed
+
+- Docker installations show container-safe Application health instead of host-specific Receiver health metrics.
+
 ## [1.2.0] - 2026-08-16
 
 ### Added
