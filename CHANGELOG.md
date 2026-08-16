@@ -4,7 +4,7 @@ All notable changes to OGN Monitor are documented in this file.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.3.0] - 2026-08-16
 
 ### Added
 
