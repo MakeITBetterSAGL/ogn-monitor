@@ -34,7 +34,7 @@ class StatisticsTest(unittest.TestCase):
                 );
                 """
             )
-            for index, protocol in enumerate(("FLARM", "FANET", "ADS-L"), 1):
+            for index, protocol in enumerate(("FLARM", "FANET", "ADS-L", "ADS-B"), 1):
                 received_at = (now - timedelta(minutes=index * 5)).isoformat()
                 database.execute(
                     "INSERT INTO packets(id, received_at) VALUES (?, ?)",
@@ -66,12 +66,13 @@ class StatisticsTest(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["range"], "24h")
         self.assertEqual(payload["bucket_seconds"], 1800)
-        self.assertEqual(payload["summary"]["packets"], 3)
-        self.assertEqual(payload["summary"]["positions"], 3)
-        self.assertEqual(payload["summary"]["aircraft"], 3)
+        self.assertEqual(payload["summary"]["packets"], 4)
+        self.assertEqual(payload["summary"]["positions"], 4)
+        self.assertEqual(payload["summary"]["aircraft"], 4)
         self.assertTrue(any(row["flarm"] for row in payload["series"]))
         self.assertTrue(any(row["fanet"] for row in payload["series"]))
         self.assertTrue(any(row["adsl"] for row in payload["series"]))
+        self.assertTrue(any(row["adsb"] for row in payload["series"]))
 
     def test_invalid_range(self):
         response = self.client.get("/api/statistics?range=invalid")

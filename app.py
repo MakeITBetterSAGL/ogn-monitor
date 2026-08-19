@@ -148,6 +148,19 @@ def parse_history_date(value):
     return selected
 
 
+def parse_replay_time(value, end_of_minute=False):
+    if not value:
+        return None
+    try:
+        parsed = time.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed.replace(
+        second=59 if end_of_minute else 0,
+        microsecond=999999 if end_of_minute else 0,
+    )
+
+
 def canonical_aircraft_id(aircraft_id):
     value = str(aircraft_id or "").upper()
     if (
@@ -937,7 +950,9 @@ def get_tracks():
     return tracks
 
 
-def get_replay_session(selected_day, aircraft_id, session_number):
+def get_replay_session(
+    selected_day, aircraft_id, session_number, start_time=None, end_time=None
+):
     start_utc, end_utc = day_bounds_utc(selected_day)
     identity = canonical_aircraft_id(aircraft_id)
     with open_database() as db:
@@ -978,6 +993,24 @@ def get_replay_session(selected_day, aircraft_id, session_number):
         return None
 
     selected = sessions[session_number - 1]
+    if start_time is not None or end_time is not None:
+        selected = [
+            row for row in selected
+            if (
+                start_time is None
+                or parse_timestamp(row["received_at"])
+                .astimezone(LOCAL_TIMEZONE).time().replace(tzinfo=None)
+                >= start_time
+            )
+            and (
+                end_time is None
+                or parse_timestamp(row["received_at"])
+                .astimezone(LOCAL_TIMEZONE).time().replace(tzinfo=None)
+                <= end_time
+            )
+        ]
+        if not selected:
+            return None
     # Preserve high-resolution tracks for ordinary sessions. This safety cap
     # only protects the browser from exceptionally large sessions.
     maximum_points = 10000
@@ -1130,7 +1163,8 @@ def calculate_statistics(range_key):
                 SUM(CASE WHEN protocol = 'FLARM' THEN 1 ELSE 0 END) AS flarm,
                 SUM(CASE WHEN protocol = 'FANET' THEN 1 ELSE 0 END) AS fanet,
                 SUM(CASE WHEN protocol = 'ADS-L' THEN 1 ELSE 0 END) AS adsl,
-                SUM(CASE WHEN protocol NOT IN ('FLARM', 'FANET', 'ADS-L')
+                SUM(CASE WHEN protocol = 'ADS-B' THEN 1 ELSE 0 END) AS adsb,
+                SUM(CASE WHEN protocol NOT IN ('FLARM', 'FANET', 'ADS-L', 'ADS-B')
                          OR protocol IS NULL THEN 1 ELSE 0 END) AS other
             FROM positions
             WHERE received_at >= ?
@@ -1198,6 +1232,7 @@ def calculate_statistics(range_key):
                 "flarm": row["flarm"] if row else 0,
                 "fanet": row["fanet"] if row else 0,
                 "adsl": row["adsl"] if row else 0,
+                "adsb": row["adsb"] if row else 0,
                 "other": row["other"] if row else 0,
             }
         )
@@ -1355,13 +1390,25 @@ def api_tracks():
 def api_replay_session():
     selected_day = parse_history_date(request.args.get("date"))
     aircraft_id = request.args.get("aircraft_id", "").strip()
+    start_value = request.args.get("from", "").strip()
+    end_value = request.args.get("to", "").strip()
+    start_time = parse_replay_time(start_value)
+    end_time = parse_replay_time(end_value, end_of_minute=True)
     try:
         session_number = int(request.args.get("session", "1"))
     except ValueError:
         session_number = 0
-    if selected_day is None or not aircraft_id or session_number < 1:
+    if (
+        selected_day is None or not aircraft_id or session_number < 1
+        or (start_value and start_time is None)
+        or (end_value and end_time is None)
+        or (start_time is not None and end_time is not None
+            and start_time > end_time)
+    ):
         return jsonify({"error": "Invalid replay session"}), 400
-    replay = get_replay_session(selected_day, aircraft_id, session_number)
+    replay = get_replay_session(
+        selected_day, aircraft_id, session_number, start_time, end_time
+    )
     if replay is None:
         return jsonify({"error": "Replay session not found"}), 404
     return jsonify(replay)

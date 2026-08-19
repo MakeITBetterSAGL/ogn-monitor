@@ -13,7 +13,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --requirement requirements.txt
 
-COPY app.py collector.py parser.py docker-entrypoint.py ./
+COPY app.py collector.py parser.py retention.py docker-entrypoint.py ./
 COPY templates ./templates
 COPY static ./static
 

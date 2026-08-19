@@ -4,6 +4,25 @@ All notable changes to OGN Monitor are documented in this file.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-08-19
+
+### Added
+
+- Added optional maximum-radius and minimum/maximum AMSL altitude recording filters configured through environment variables ([#4](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/4)).
+- Added configurable data retention for native systemd and Docker installations, with a default of 365 days, as an additional storage safeguard requested in [#4](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/4).
+- Added explicit ADS-B recognition, filters, map colours and Statistics series for traffic forwarded by compatible decoders ([#4](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/4)).
+- Added Replay `From` and `To` controls with automatic session start/end values and full inclusion of the selected final minute ([#4](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/4)).
+- Added anonymized Replay and all-time coverage screenshots to the project overview.
+
+### Changed
+
+- Clarified that ADS-B reception and radio drivers remain the responsibility of the external decoder.
+- Kept all new public configuration in `.env`/`docker.env`; no password-protected settings page is included.
+
+### Related issues
+
+- [#4 - Feature Request: Altitude and Circle Filter](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/4), reported by [@VirusPilot](https://github.com/VirusPilot).
+
 ## [1.3.0] - 2026-08-16
 
 ### Added

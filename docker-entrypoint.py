@@ -114,6 +114,7 @@ def main() -> int:
         return 1
 
     start(sys.executable, str(BASE_DIR / "parser.py"))
+    start(sys.executable, str(BASE_DIR / "retention.py"), "--loop")
     start(
         sys.executable,
         "-m",

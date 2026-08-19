@@ -117,9 +117,19 @@ OGN_TRACK_MINUTES="30"
 OGN_ONLINE_SECONDS="120"
 OGN_SESSION_GAP_MINUTES="20"
 OGN_PARSER_POLL_SECONDS="2"
+OGN_FILTER_MAX_RADIUS_KM=""
+OGN_FILTER_MIN_ALTITUDE_M=""
+OGN_FILTER_MAX_ALTITUDE_M=""
+OGN_RETENTION_DAYS="365"
 OGN_WEB_HOST="0.0.0.0"
 OGN_WEB_PORT="5000"
 ```
+
+The three recording filters are optional and disabled when left empty. The
+radius is measured from the configured station coordinates. Altitude limits
+use metres above mean sea level (AMSL). Filters affect newly received data;
+they do not remove existing history. The retention job removes packets and
+positions older than `OGN_RETENTION_DAYS` during nightly maintenance.
 
 ## 6. Download public aircraft metadata
 
@@ -140,7 +150,8 @@ sudo systemctl enable --now \
     ogn-collector.service \
     ogn-parser.service \
     ogn-monitor.service \
-    ogn-ddb-update.timer
+    ogn-ddb-update.timer \
+    ogn-retention.timer
 ```
 
 Check their status:
@@ -195,7 +206,8 @@ From the project directory:
 ```sh
 cd ~/ogn-monitor
 git pull --ff-only
-.venv/bin/pip install -r requirements.txt
+./scripts/install.sh
+sudo systemctl enable --now ogn-ddb-update.timer ogn-retention.timer
 sudo systemctl restart ogn-collector ogn-parser ogn-monitor
 ```
 

@@ -2,8 +2,8 @@
 
 This setup runs OGN Monitor as one unprivileged application container. The OGN
 decoder, SDR drivers and radio hardware remain on the host. The container starts
-the collector, parser and Gunicorn web server and stores runtime data in a named
-Docker volume.
+the collector, parser, retention worker and Gunicorn web server and stores
+runtime data in a named Docker volume.
 
 ## Requirements
 
@@ -27,6 +27,11 @@ cp docker.env.example docker.env
 
 Edit `docker.env` and set the station name, coordinates, time zone, decoder host
 and decoder port. The file is ignored by Git.
+
+Optional radius and AMSL altitude filters can limit newly recorded positions.
+Leave their values empty to disable them. `OGN_RETENTION_DAYS` controls how
+long packets and positions remain in the persistent volume; it defaults to 365
+days. See `docker.env.example` for the exact variable names.
 
 The default decoder host is `host.docker.internal`. Compose maps that name to
 the Docker host on Linux. The decoder must accept connections from the Docker

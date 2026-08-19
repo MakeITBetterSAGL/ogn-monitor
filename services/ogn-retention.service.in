@@ -1,0 +1,11 @@
+[Unit]
+Description=OGN Monitor data retention
+After=ogn-parser.service
+
+[Service]
+Type=oneshot
+User=@USER@
+Group=@GROUP@
+WorkingDirectory=@INSTALL_DIR@
+EnvironmentFile=@INSTALL_DIR@/.env
+ExecStart=@INSTALL_DIR@/.venv/bin/python @INSTALL_DIR@/retention.py

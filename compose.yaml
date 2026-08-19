@@ -2,7 +2,7 @@ services:
   ogn-monitor:
     build:
       context: .
-    image: ogn-monitor:1.3.0
+    image: ogn-monitor:1.4.0
     restart: unless-stopped
     init: true
     env_file:

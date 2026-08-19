@@ -112,10 +112,10 @@ function formatClimbRate(value) {
 }
 function protocolKey(protocol) { return String(protocol || "OTHER").toUpperCase().replace(/[^A-Z]/g, ""); }
 function protocolColor(protocol) {
-    return { FLARM: "#3b82f6", FANET: "#22c55e", ADSL: "#f97316" }[protocolKey(protocol)] || "#a855f7";
+    return { FLARM: "#3b82f6", FANET: "#22c55e", ADSL: "#f97316", ADSB: "#ef4444" }[protocolKey(protocol)] || "#a855f7";
 }
 function protocolClass(protocol) {
-    return { FLARM: "aircraft-flarm", FANET: "aircraft-fanet", ADSL: "aircraft-adsl" }[protocolKey(protocol)] || "aircraft-other";
+    return { FLARM: "aircraft-flarm", FANET: "aircraft-fanet", ADSL: "aircraft-adsl", ADSB: "aircraft-adsb" }[protocolKey(protocol)] || "aircraft-other";
 }
 function aircraftTypeLabel(type) {
     return {
@@ -493,9 +493,12 @@ function syncHistorySortControls() {
 async function openHistoryReplay(session) {
     if (!selectedHistoryDate) return;
     document.getElementById("replay-date").value = selectedHistoryDate;
+    document.getElementById("replay-from").value = "";
+    document.getElementById("replay-to").value = "";
     await setMapMode("replay");
     const selector = document.getElementById("replay-session");
     selector.value = `${session.aircraft_id}|${session.session_number}`;
+    applySelectedReplaySessionWindow();
     await loadReplaySession();
     document.querySelector(".map-card").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -744,22 +747,73 @@ async function loadReplaySessions(day) {
     selector.disabled = true; clearReplayLayers();
     const detail = await getJson(`/api/history/day?date=${encodeURIComponent(day)}`);
     selector.innerHTML = `<option value="">Select a session</option>`;
-    for (const session of detail.aircraft.filter(item => item.position_points > 0)) {
+    const fromMinutes = replayTimeMinutes(document.getElementById("replay-from").value, 0);
+    const toMinutes = replayTimeMinutes(document.getElementById("replay-to").value, 1439);
+    const sessions = fromMinutes <= toMinutes
+        ? detail.aircraft.filter(item => item.position_points > 0 && replaySessionOverlaps(item, fromMinutes, toMinutes))
+        : [];
+    for (const session of sessions) {
         const option = document.createElement("option");
         option.value = `${session.aircraft_id}|${session.session_number}`;
+        option.dataset.from = localReplayInputTime(session.first_received);
+        option.dataset.to = localReplayInputTime(session.last_received);
         option.textContent = `${session.aircraft_id} · session ${session.session_number} · ${formatHistoryTime(session.first_received)}–${formatHistoryTime(session.last_received)} · ${session.position_points} points`;
         selector.appendChild(option);
     }
     selector.disabled = false;
-    document.getElementById("replay-time").textContent = selector.options.length > 1 ? "Select a session" : "No sessions this day";
+    document.getElementById("replay-time").textContent = selector.options.length > 1
+        ? "Select a session"
+        : (fromMinutes > toMinutes ? "Invalid time range" : "No sessions in this time range");
+}
+
+function replayTimeMinutes(value, fallback) {
+    if (!value) return fallback;
+    const [hours, minutes] = value.split(":").map(Number);
+    return hours * 60 + minutes;
+}
+
+function localReplayInputTime(timestamp) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: DISPLAY_TIME_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(new Date(timestamp));
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.hour}:${values.minute}`;
+}
+
+function localReplayMinutes(timestamp) {
+    const [hours, minutes] = localReplayInputTime(timestamp).split(":").map(Number);
+    return hours * 60 + minutes;
+}
+
+function replaySessionOverlaps(session, fromMinutes, toMinutes) {
+    return localReplayMinutes(session.last_received) >= fromMinutes
+        && localReplayMinutes(session.first_received) <= toMinutes;
+}
+
+function applySelectedReplaySessionWindow() {
+    const selector = document.getElementById("replay-session");
+    const option = selector.options[selector.selectedIndex];
+    if (!selector.value || !option) {
+        document.getElementById("replay-from").value = "";
+        document.getElementById("replay-to").value = "";
+        return;
+    }
+    document.getElementById("replay-from").value = option.dataset.from || "";
+    document.getElementById("replay-to").value = option.dataset.to || "";
 }
 async function loadReplaySession() {
     const selector = document.getElementById("replay-session");
-    if (!selector.value) return;
+    if (!selector.value) {
+        clearReplayLayers();
+        document.getElementById("replay-time").textContent = "Select a session";
+        return;
+    }
     const [aircraftId, sessionNumber] = selector.value.split("|");
     const day = document.getElementById("replay-date").value;
     clearReplayLayers(); document.getElementById("replay-time").textContent = "Loading…";
-    const data = await getJson(`/api/replay/session?date=${encodeURIComponent(day)}&aircraft_id=${encodeURIComponent(aircraftId)}&session=${encodeURIComponent(sessionNumber)}`);
+    const fromTime = document.getElementById("replay-from").value;
+    const toTime = document.getElementById("replay-to").value;
+    const data = await getJson(`/api/replay/session?date=${encodeURIComponent(day)}&aircraft_id=${encodeURIComponent(aircraftId)}&session=${encodeURIComponent(sessionNumber)}&from=${encodeURIComponent(fromTime)}&to=${encodeURIComponent(toTime)}`);
     replayPoints = data.points.map(point => ({ ...point, aircraft_id: data.aircraft_id }));
     if (replayPoints.length) {
         const aircraftTypes = [...new Set(replayPoints.map(point => aircraftTypeLabel(point.aircraft_type)))];
@@ -883,6 +937,8 @@ async function refreshDisplayUnits() {
 
 syncMonitorUnitSelector();
 syncHistorySortControls();
+document.getElementById("replay-from").value = "";
+document.getElementById("replay-to").value = "";
 document.getElementById("replay-speed").value = "10";
 Promise.all([runRefresh(refreshStats), runRefresh(refreshAircraft), runRefresh(refreshTracks), runRefresh(refreshSystem), runRefresh(refreshHistory), runRefresh(refreshArchive)]);
 document.querySelectorAll("[data-monitor-units]").forEach(button => button.addEventListener("click", () => {
@@ -964,7 +1020,16 @@ mapStyleSelector.addEventListener("change", event => setBaseMap(event.target.val
 document.getElementById("replay-date").addEventListener("change", event => {
     if (event.target.value) runRefresh(() => loadReplaySessions(event.target.value));
 });
-document.getElementById("replay-session").addEventListener("change", () => runRefresh(loadReplaySession));
+for (const id of ["replay-from", "replay-to"]) {
+    document.getElementById(id).addEventListener("change", () => {
+        const day = document.getElementById("replay-date").value;
+        if (day) runRefresh(() => loadReplaySessions(day));
+    });
+}
+document.getElementById("replay-session").addEventListener("change", () => {
+    applySelectedReplaySessionWindow();
+    runRefresh(loadReplaySession);
+});
 document.getElementById("replay-play").addEventListener("click", toggleReplay);
 document.getElementById("replay-timeline").addEventListener("input", event => {
     stopReplay(); renderReplayPoint(Number(event.target.value));

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run OGN Monitor data retention daily
+
+[Timer]
+OnCalendar=*-*-* 03:35:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

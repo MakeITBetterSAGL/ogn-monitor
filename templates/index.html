@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OGN Monitor</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='1.2.0') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='1.4.0') }}">
 </head>
 <body>
     <main class="container">
@@ -73,6 +73,7 @@
                         <button type="button" class="filter-button" data-protocol="FLARM">FLARM</button>
                         <button type="button" class="filter-button" data-protocol="FANET">FANET</button>
                         <button type="button" class="filter-button" data-protocol="ADS-L">ADS-L</button>
+                        <button type="button" class="filter-button" data-protocol="ADS-B">ADS-B</button>
                     </div>
                 </div>
                 <div class="aircraft-layout">
@@ -118,6 +119,7 @@
                     <span><i class="legend-dot flarm"></i>FLARM</span>
                     <span><i class="legend-dot fanet"></i>FANET</span>
                     <span><i class="legend-dot adsl"></i>ADS-L</span>
+                    <span><i class="legend-dot adsb"></i>ADS-B</span>
                     <span><i class="legend-dot other"></i>Other</span>
                 </div>
             </div>
@@ -134,6 +136,12 @@
                 <div class="replay-row replay-source-row">
                     <label>Day
                         <input id="replay-date" type="date">
+                    </label>
+                    <label>From
+                        <input id="replay-from" type="time">
+                    </label>
+                    <label>To
+                        <input id="replay-to" type="time">
                     </label>
                     <label>Flight session
                         <select id="replay-session"><option value="">Select a session</option></select>
@@ -239,6 +247,7 @@
                                 <option value="FLARM">FLARM</option>
                                 <option value="FANET">FANET</option>
                                 <option value="ADS-L">ADS-L</option>
+                                <option value="ADS-B">ADS-B</option>
                                 <option value="OTHER">Other</option>
                             </select>
                             <select id="history-type-filter" aria-label="Filter history by aircraft type">
@@ -338,6 +347,6 @@
         window.OGN_CONFIG = {{ {"station": station}|tojson }};
     </script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="{{ url_for('static', filename='js/app.js', v='1.2.0') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js', v='1.4.0') }}"></script>
 </body>
 </html>

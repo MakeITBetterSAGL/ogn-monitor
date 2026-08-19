@@ -121,6 +121,7 @@ function render(data) {
         flarm_rate: row.flarm * perMinute,
         fanet_rate: row.fanet * perMinute,
         adsl_rate: row.adsl * perMinute,
+        adsb_rate: row.adsb * perMinute,
         display_max_distance: row.max_distance_km === null ? null : row.max_distance_km * (imperial ? KM_TO_MILES : 1),
         display_avg_distance: row.avg_distance_km === null ? null : row.avg_distance_km * (imperial ? KM_TO_MILES : 1),
         display_max_altitude: row.max_altitude_m === null ? null : row.max_altitude_m * (imperial ? METRES_TO_FEET : 1),
@@ -153,6 +154,7 @@ function render(data) {
         { key: "flarm_rate", label: "FLARM", color: "#3b82f6" },
         { key: "fanet_rate", label: "FANET", color: "#22c55e" },
         { key: "adsl_rate", label: "ADS-L", color: "#f97316" },
+        { key: "adsb_rate", label: "ADS-B", color: "#ef4444" },
     ]);
     document.getElementById("stats-updated").textContent = `Updated ${new Date(data.generated_at).toLocaleTimeString("en-GB")}`;
 }

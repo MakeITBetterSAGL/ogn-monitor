@@ -1,6 +1,6 @@
 # OGN Monitor
 
-OGN Monitor is a lightweight web dashboard for a local Open Glider Network receiver. It is designed for Raspberry Pi installations and uses Flask, SQLite and Leaflet without Grafana or an external database.
+OGN Monitor is a lightweight web dashboard for a local Open Glider Network receiver. It recognizes OGN, FLARM, FANET, ADS-L and ADS-B traffic forwarded by the configured decoder. It is designed for Raspberry Pi and Docker installations and uses Flask, SQLite and Leaflet without Grafana or an external database.
 
 See the project-wide **[Changelog](CHANGELOG.md)** for release history, fixes and links to individual commits.
 
@@ -11,6 +11,7 @@ The dashboard provides:
 - aircraft-type icons and public OGN Devices Database metadata;
 - daily activity and sortable flight-session history;
 - map replay for recorded sessions;
+- selectable Replay time windows with automatic session start and end times;
 - high-resolution replay telemetry with point timing, altitude and speed;
 - all-time coverage views by density or altitude;
 - a responsive Statistics page with selectable time ranges and seven charts;
@@ -29,6 +30,14 @@ The examples below use synthetic aircraft, sessions and an approximate public ma
 ### Flight-session history
 
 ![OGN Monitor flight-session history](docs/screenshots/history-desktop.png)
+
+### Session replay
+
+![OGN Monitor anonymized session replay](docs/screenshots/replay-desktop.png)
+
+### All-time coverage
+
+![OGN Monitor all-time coverage](docs/screenshots/all-tracks-desktop.png)
 
 ### Mobile layout
 
@@ -58,6 +67,10 @@ The decoder itself is not included. OGN Monitor starts at the decoder's local TC
 Docker is also supported for the OGN Monitor application. The decoder and its
 radio drivers remain on the host. See the **[Docker guide](docs/DOCKER.md)**.
 
+ADS-B support identifies traffic already forwarded through the configured APRS
+decoder. OGN Monitor does not include a 1090 MHz receiver, radio drivers or a
+replacement for dedicated ADS-B software such as tar1090.
+
 ## Quick start
 
 For a complete new-device walkthrough, including decoder verification, service checks, updates and troubleshooting, read the **[Raspberry Pi installation guide](docs/INSTALLATION.md)**.
@@ -83,7 +96,7 @@ Then initialize aircraft metadata and start the services:
 
 ```sh
 ./scripts/update-ogn-ddb.sh
-sudo systemctl enable --now ogn-collector ogn-parser ogn-monitor ogn-ddb-update.timer
+sudo systemctl enable --now ogn-collector ogn-parser ogn-monitor ogn-ddb-update.timer ogn-retention.timer
 ```
 
 Open `http://<raspberry-pi-address>:5000`.
@@ -119,17 +132,22 @@ Copy [`config.example.env`](config.example.env) to `.env`. The service reads thi
 | `OGN_TRACK_MINUTES` | `30` | Recent-track window |
 | `OGN_ONLINE_SECONDS` | `120` | Packet freshness used for active traffic |
 | `OGN_SESSION_GAP_MINUTES` | `20` | Gap that separates two flight sessions |
+| `OGN_FILTER_MAX_RADIUS_KM` | disabled | Reject new positions beyond this radius from the configured station coordinates |
+| `OGN_FILTER_MIN_ALTITUDE_M` | disabled | Reject new positions below this altitude in metres AMSL |
+| `OGN_FILTER_MAX_ALTITUDE_M` | disabled | Reject new positions above this altitude in metres AMSL |
+| `OGN_RETENTION_DAYS` | `365` | Delete packets and positions older than this many days during scheduled cleanup |
 | `OGN_DDB_FILE` | `database/ogn-ddb.json` | Public aircraft metadata file; Docker uses `/data/ogn-ddb.json` |
 | `OGN_RUNTIME_MODE` | `native` | Selects native Receiver health or Docker Application health |
 
 ## Services
 
-The installer creates four systemd services/timers:
+The installer creates the application services and maintenance timers:
 
 - `ogn-collector`: records APRS packets in SQLite;
 - `ogn-parser`: converts pending packets into positions;
 - `ogn-monitor`: serves the dashboard on HTTP port 5000;
 - `ogn-ddb-update.timer`: refreshes the public OGN device database daily.
+- `ogn-retention.timer`: removes data older than the configured retention period daily.
 
 Useful commands:
 
