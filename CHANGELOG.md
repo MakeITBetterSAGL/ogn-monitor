@@ -4,6 +4,12 @@ All notable changes to OGN Monitor are documented in this file.
 
 The project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Documentation
+
+- Added a project-wide upgrade guide for native Raspberry Pi and Docker installations, including verification, rollback and version-specific notes.
+
 ## [1.4.0] - 2026-08-19
 
 ### Added

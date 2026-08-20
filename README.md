@@ -2,7 +2,7 @@
 
 OGN Monitor is a lightweight web dashboard for a local Open Glider Network receiver. It recognizes OGN, FLARM, FANET, ADS-L and ADS-B traffic forwarded by the configured decoder. It is designed for Raspberry Pi and Docker installations and uses Flask, SQLite and Leaflet without Grafana or an external database.
 
-See the project-wide **[Changelog](CHANGELOG.md)** for release history, fixes and links to individual commits.
+See the project-wide **[Changelog](CHANGELOG.md)** for release history, fixes and links to individual commits. Existing installations should follow the **[upgrade guide](UPGRADING.md)**.
 
 The dashboard provides:
 
