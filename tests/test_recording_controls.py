@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import app
+import collector
 import parser
 import retention
 
@@ -15,9 +16,91 @@ import retention
 class RecordingControlsTest(unittest.TestCase):
     def test_protocol_recognition(self):
         self.assertEqual(parser.protocol_name("OGADSB"), "ADS-B")
-        self.assertEqual(parser.protocol_name("MY-ADSB"), "ADS-B")
-        self.assertEqual(parser.protocol_name("OGNTRK", "ICA4B1234"), "ADS-B")
+        self.assertEqual(parser.protocol_name("ONADSB"), "ADS-B")
+        self.assertEqual(parser.protocol_name("OGADSB", "ICA4B1234"), "ADS-B")
+        self.assertEqual(parser.protocol_name("OGFLR", "ICA4B1234"), "FLARM")
+        self.assertEqual(parser.protocol_name("OGNTRK", "ICA4B1234"), "OGNTRK")
+        self.assertEqual(parser.protocol_name("MY-ADSB", "ICA4B1234"), "MY-ADSB")
         self.assertEqual(parser.protocol_name("OGFLR"), "FLARM")
+
+    def test_legacy_adsb_reclassification_is_safe_and_idempotent(self):
+        with sqlite3.connect(":memory:") as database:
+            database.execute(
+                """
+                CREATE TABLE positions (
+                    id INTEGER PRIMARY KEY,
+                    destination TEXT NOT NULL,
+                    protocol TEXT
+                )
+                """
+            )
+            database.executemany(
+                "INSERT INTO positions VALUES (?, ?, ?)",
+                (
+                    (1, "OGADSB", "ADS-B"),
+                    (2, "ONADSB", "ADS-B"),
+                    (3, "OGFLR", "ADS-B"),
+                    (4, "OGNTRK", "ADS-B"),
+                    (5, "MY-ADSB", "ADS-B"),
+                    (6, "OGNFNT", "FANET"),
+                ),
+            )
+
+            self.assertEqual(parser.reclassify_legacy_adsb(database), 3)
+            self.assertEqual(parser.reclassify_legacy_adsb(database), 0)
+            protocols = dict(
+                database.execute("SELECT id, protocol FROM positions").fetchall()
+            )
+
+        self.assertEqual(protocols[1], "ADS-B")
+        self.assertEqual(protocols[2], "ADS-B")
+        self.assertEqual(protocols[3], "FLARM")
+        self.assertEqual(protocols[4], "OGNTRK")
+        self.assertEqual(protocols[5], "MY-ADSB")
+        self.assertEqual(protocols[6], "FANET")
+
+    def test_aprs_tocall_drives_end_to_end_classification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "test.sqlite3"
+            with patch.object(collector, "DATABASE", database_path):
+                database = collector.open_database()
+            packets = (
+                (
+                    1,
+                    "2026-08-24T10:00:00+00:00",
+                    "ICA34364F",
+                    "OGADSB",
+                    "APRS <- ICA34364F>OGADSB,qAS,TEST:/140827h4038.69N\\00344.37W^235/248/A=010350 id2534364F +1792fpm",
+                ),
+                (
+                    2,
+                    "2026-08-24T10:00:01+00:00",
+                    "ICA4B1234",
+                    "OGFLR",
+                    "APRS <- ICA4B1234>OGFLR,qAS,TEST:/140828h4038.70N\\00344.38W^235/100/A=005000 id254B1234 +0100fpm",
+                ),
+            )
+            database.executemany(
+                "INSERT INTO packets VALUES (?, ?, ?, ?, ?)",
+                packets,
+            )
+            parser.initialize_parser_state(database)
+            with patch.multiple(
+                parser,
+                MAX_RADIUS_KM=None,
+                MIN_ALTITUDE_M=None,
+                MAX_ALTITUDE_M=None,
+            ):
+                self.assertEqual(parser.process_pending(database), 2)
+            protocols = dict(
+                database.execute(
+                    "SELECT aircraft_id, protocol FROM positions"
+                ).fetchall()
+            )
+            database.close()
+
+        self.assertEqual(protocols["ICA34364F"], "ADS-B")
+        self.assertEqual(protocols["ICA4B1234"], "FLARM")
 
     def test_radius_and_altitude_filters(self):
         with patch.multiple(

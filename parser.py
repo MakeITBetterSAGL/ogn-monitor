@@ -57,19 +57,19 @@ PROTOCOLS = {
     "OGNFNT": "FANET",
     "OGADSL": "ADS-L",
     "OGADSB": "ADS-B",
+    "ONADSB": "ADS-B",
 }
 
 
 def protocol_name(destination: str, sender: str = "") -> str:
+    """Return the traffic source identified by the APRS destination/TOCALL.
+
+    The sender prefix describes the address type, not the receiving protocol.
+    In particular, an ICA-prefixed target is not necessarily an ADS-B target.
+    """
     normalized = (destination or "").strip().upper()
-    # OGN uses the ICA prefix for ICAO/transponder targets. This remains
-    # identifiable even when all traffic shares a generic APRS destination.
-    if (sender or "").strip().upper().startswith("ICA"):
-        return "ADS-B"
     if normalized in PROTOCOLS:
         return PROTOCOLS[normalized]
-    if "ADSB" in normalized.replace("-", ""):
-        return "ADS-B"
     return destination
 
 
@@ -125,6 +125,44 @@ def initialize_parser_state(db: sqlite3.Connection) -> None:
         """
     )
     db.commit()
+
+
+def reclassify_legacy_adsb(db: sqlite3.Connection) -> int:
+    """Correct ADS-B labels created by the v1.4.0 sender-prefix heuristic."""
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS parser_migrations (
+            name TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    migration_name = "protocol_source_tocall_v1"
+    if db.execute(
+        "SELECT 1 FROM parser_migrations WHERE name = ?",
+        (migration_name,),
+    ).fetchone():
+        return 0
+
+    corrected = 0
+    rows = db.execute(
+        "SELECT id, destination FROM positions WHERE protocol = 'ADS-B'"
+    ).fetchall()
+    for position_id, destination in rows:
+        protocol = protocol_name(destination)
+        if protocol != "ADS-B":
+            db.execute(
+                "UPDATE positions SET protocol = ? WHERE id = ?",
+                (protocol, position_id),
+            )
+            corrected += 1
+
+    db.execute(
+        "INSERT INTO parser_migrations (name) VALUES (?)",
+        (migration_name,),
+    )
+    db.commit()
+    return corrected
 
 
 def parse_comment(
@@ -292,6 +330,12 @@ def main() -> None:
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=NORMAL")
         initialize_parser_state(db)
+        corrected = reclassify_legacy_adsb(db)
+        if corrected:
+            print(
+                f"Corrected {corrected} legacy ADS-B protocol labels.",
+                flush=True,
+            )
 
         while True:
             inserted = process_pending(db)

@@ -110,6 +110,23 @@ by a retention policy cannot be restored by rolling back the application.
 
 ## Version-specific notes
 
+### Upgrading to v1.4.1
+
+Version 1.4.1 corrects false-positive ADS-B labels introduced by v1.4.0.
+
+- No configuration change is required.
+- Restarting the parser automatically runs a one-time migration of existing
+  positions labelled ADS-B.
+- The migration uses the stored APRS destination/TOCALL. It preserves genuine
+  `OGADSB` and `ONADSB` records and reclassifies unsupported ADS-B labels.
+- The migration changes only the `protocol` label; it does not delete packets,
+  positions or flight history.
+- Native installations receive the fix by rerunning `./scripts/install.sh` and
+  restarting the services as described above. Docker installations receive it
+  when the image is rebuilt.
+
+No manual database migration is required for v1.4.1.
+
 ### Upgrading to v1.4.0
 
 Version 1.4.0 adds recording filters, scheduled retention, explicit ADS-B

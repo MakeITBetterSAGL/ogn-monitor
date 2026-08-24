@@ -6,9 +6,21 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-24
+
+### Fixed
+
+- Corrected ADS-B source detection to use the APRS destination/TOCALL rather than the aircraft sender prefix. `ICA` identifies an ICAO address type and does not prove that a position was received through ADS-B.
+- ADS-B is now assigned only to the official `OGADSB` and `ONADSB` TOCALL values. ICA-addressed traffic received through `OGFLR`, `OGNTRK` or another source is no longer reported as ADS-B.
+- Added a one-time, non-destructive migration that reclassifies existing false-positive ADS-B labels from v1.4.0 using their stored TOCALL. Genuine `OGADSB` and `ONADSB` records are preserved.
+
 ### Documentation
 
 - Added a project-wide upgrade guide for native Raspberry Pi and Docker installations, including verification, rollback and version-specific notes.
+
+### Related issues
+
+- [#5 - Where is the source of ads-b?](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/5), reported by [whallmann](https://github.com/whallmann).
 
 ## [1.4.0] - 2026-08-19
 
