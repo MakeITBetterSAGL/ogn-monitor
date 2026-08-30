@@ -44,12 +44,14 @@ def validate_filter_configuration() -> None:
 
 validate_filter_configuration()
 
-COMMENT_RE = re.compile(
-    r"(?P<climb>[+-]?\d+)fpm"
-    r".*?"
-    r"(?P<snr>[+-]?\d+(?:\.\d+)?)dB"
-    r"\s+"
-    r"(?P<freq>[+-]?\d+(?:\.\d+)?)kHz"
+CLIMB_RE = re.compile(r"(?<!\w)(?P<value>[+-]?\d+)fpm\b", re.IGNORECASE)
+SNR_RE = re.compile(
+    r"(?<!\w)(?P<value>[+-]?\d+(?:\.\d+)?)dB(?!m)\b",
+    re.IGNORECASE,
+)
+FREQUENCY_RE = re.compile(
+    r"(?<!\w)(?P<value>[+-]?\d+(?:\.\d+)?)kHz\b",
+    re.IGNORECASE,
 )
 
 PROTOCOLS = {
@@ -168,14 +170,25 @@ def reclassify_legacy_adsb(db: sqlite3.Connection) -> int:
 def parse_comment(
     comment: str,
 ) -> tuple[float | None, float | None, float | None]:
-    match = COMMENT_RE.search(comment or "")
+    """Extract available radio values without requiring a fixed field order.
 
-    if match is None:
-        return None, None, None
+    OGN comments vary by source. For example, corrected packets may include an
+    error-count token between SNR and frequency, while PilotAware comments omit
+    climb rate and can append estimated transmitter power in dBm.
+    """
+    comment = comment or ""
+    climb_match = CLIMB_RE.search(comment)
+    snr_match = SNR_RE.search(comment)
+    frequency_match = FREQUENCY_RE.search(comment)
 
-    climb_ms = float(match.group("climb")) * 0.00508
-    snr_db = float(match.group("snr"))
-    frequency_offset_khz = float(match.group("freq"))
+    climb_ms = (
+        float(climb_match.group("value")) * 0.00508
+        if climb_match else None
+    )
+    snr_db = float(snr_match.group("value")) if snr_match else None
+    frequency_offset_khz = (
+        float(frequency_match.group("value")) if frequency_match else None
+    )
 
     return climb_ms, snr_db, frequency_offset_khz
 

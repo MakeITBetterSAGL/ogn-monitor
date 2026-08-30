@@ -6,6 +6,20 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-08-30
+
+### Fixed
+
+- Parse climb rate, SNR and frequency offset independently instead of requiring every value in one fixed sequence.
+- Preserve radio values from corrected packets containing an error-count token such as `1e` between SNR and frequency offset ([#8](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/8)).
+- Preserve SNR and frequency offset from PilotAware `OGPAW` packets that omit climb rate, including packets with an additional estimated transmitter-power value in `dBm` ([#9](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/9)).
+- Prevent an estimated transmitter-power value in `dBm` from being interpreted as SNR.
+
+### Related issues
+
+- [#8 - Comment not successfully parsed when message contains bit error](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/8), reported by [@aebrookes](https://github.com/aebrookes).
+- [#9 - Comments in PilotAware messages not successfully parsed for SNR and frequency offset](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/9), reported by [@aebrookes](https://github.com/aebrookes).
+
 ## [1.4.1] - 2026-08-24
 
 ### Fixed

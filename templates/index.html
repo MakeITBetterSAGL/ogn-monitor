@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OGN Monitor</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='1.4.1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='1.4.2') }}">
 </head>
 <body>
     <main class="container">
@@ -347,6 +347,6 @@
         window.OGN_CONFIG = {{ {"station": station}|tojson }};
     </script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="{{ url_for('static', filename='js/app.js', v='1.4.1') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js', v='1.4.2') }}"></script>
 </body>
 </html>

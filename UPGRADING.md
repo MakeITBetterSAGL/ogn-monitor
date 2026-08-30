@@ -26,6 +26,13 @@ replaced during a normal update. Recorded data is also retained.
 OGN Monitor currently requires no manual database-schema migration. The
 application creates compatible tables and columns when it starts.
 
+### Upgrading to v1.4.2
+
+Version 1.4.2 improves parsing of optional APRS comment fields. No configuration
+or database migration is required. Existing recorded positions are preserved;
+new packets containing error-count fields or PilotAware comments without climb
+rate retain their available SNR and frequency-offset values.
+
 ## Native Raspberry Pi installation
 
 Run the following commands from the project directory:

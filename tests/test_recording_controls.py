@@ -14,6 +14,41 @@ import retention
 
 
 class RecordingControlsTest(unittest.TestCase):
+    def test_comment_radio_values_are_parsed_independently(self):
+        climb, snr, frequency = parser.parse_comment(
+            "id06D0264B +020fpm -2.3rot 21.2dB -16.7kHz gps2x3"
+        )
+        self.assertAlmostEqual(climb, 0.1016)
+        self.assertEqual(snr, 21.2)
+        self.assertEqual(frequency, -16.7)
+
+    def test_corrected_packet_error_count_does_not_hide_radio_values(self):
+        climb, snr, frequency = parser.parse_comment(
+            "id06D0264B +317fpm +6.3rot 2.5dB 1e -15.0kHz gps2x2"
+        )
+        self.assertAlmostEqual(climb, 317 * 0.00508)
+        self.assertEqual(snr, 2.5)
+        self.assertEqual(frequency, -15.0)
+
+    def test_pilotaware_comment_without_climb_retains_snr_and_frequency(self):
+        climb, snr, frequency = parser.parse_comment(
+            "id21401D49 10.0dB +8.7kHz"
+        )
+        self.assertIsNone(climb)
+        self.assertEqual(snr, 10.0)
+        self.assertEqual(frequency, 8.7)
+
+    def test_pilotaware_transmit_power_is_not_used_as_snr(self):
+        climb, snr, frequency = parser.parse_comment(
+            "id21401D49 8.5dB +8.6kHz +13.7dBm"
+        )
+        self.assertIsNone(climb)
+        self.assertEqual(snr, 8.5)
+        self.assertEqual(frequency, 8.6)
+
+    def test_missing_comment_values_remain_none(self):
+        self.assertEqual(parser.parse_comment("id21401D49"), (None, None, None))
+
     def test_protocol_recognition(self):
         self.assertEqual(parser.protocol_name("OGADSB"), "ADS-B")
         self.assertEqual(parser.protocol_name("ONADSB"), "ADS-B")
