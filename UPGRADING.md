@@ -26,6 +26,17 @@ replaced during a normal update. Recorded data is also retained.
 OGN Monitor currently requires no manual database-schema migration. The
 application creates compatible tables and columns when it starts.
 
+### Upgrading to v1.4.3
+
+Version 1.4.3 fixes collector reconnection after receiver shutdowns and network
+interruptions. No configuration or database migration is required. Restart
+`ogn-collector` on native installations, or rebuild and recreate the Docker
+container using the commands below, to activate the fix.
+
+The collector reconnects after 120 seconds without new socket data and retries
+after a 5-second delay. A healthy but silent decoder can also trigger this
+reconnect. The dashboard checks receiver reachability independently of traffic.
+
 ### Upgrading to v1.4.2
 
 Version 1.4.2 improves parsing of optional APRS comment fields. No configuration

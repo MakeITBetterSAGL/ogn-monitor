@@ -6,6 +6,12 @@ The project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-10-23
+
+### Fixed
+
+- Recover automatically from an unresponsive decoder connection after a receiver power loss by limiting socket read waits to 120 seconds. Apply the 5-second retry delay to closed streams as well as connection errors ([#10](https://github.com/MakeITBetterSAGL/ogn-monitor/issues/10)).
+
 ## [1.4.2] - 2026-08-30
 
 ### Fixed

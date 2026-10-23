@@ -64,6 +64,14 @@ This repository contains the portable OGN Monitor core and uses generic station 
 
 The decoder itself is not included. OGN Monitor starts at the decoder's local TCP output.
 
+The collector reconnects automatically after decoder shutdowns or network failures.
+Connections that deliver no data for 120 seconds, including stalled partial lines,
+are closed and retried so an unresponsive connection cannot block collection forever.
+A quiet but healthy decoder can also trigger this reconnect; silence alone does
+not change the dashboard's receiver status, which checks TCP reachability separately.
+Failed connections and closed streams are retried after a 5-second delay, with a
+10-second connection timeout. No monitor restart is needed when the decoder returns.
+
 Docker is also supported for the OGN Monitor application. The decoder and its
 radio drivers remain on the host. See the **[Docker guide](docs/DOCKER.md)**.
 

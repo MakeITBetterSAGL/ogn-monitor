@@ -11,6 +11,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 HOST = os.getenv("OGN_DECODER_HOST", "127.0.0.1")
 PORT = int(os.getenv("OGN_DECODER_PORT", "50001"))
+DECODER_READ_TIMEOUT_SECONDS = 120
 DATABASE = Path(os.getenv("OGN_DATABASE", BASE_DIR / "database" / "ogn.sqlite3"))
 
 PACKET_RE = re.compile(
@@ -91,7 +92,9 @@ def collect() -> None:
     while True:
         try:
             with socket.create_connection((HOST, PORT), timeout=10) as sock:
-                sock.settimeout(None)
+                # A power loss can leave TCP half-open without EOF or an error.
+                # Reconnect even if the old peer never sends another byte.
+                sock.settimeout(DECODER_READ_TIMEOUT_SECONDS)
 
                 with sock.makefile(
                     "r",
@@ -132,6 +135,9 @@ def collect() -> None:
                             ),
                         )
                         database.commit()
+
+                # Back off on EOF too, avoiding a busy loop if clients are closed.
+                raise ConnectionError("Decoder closed the connection")
 
         except (ConnectionError, OSError) as error:
             print(
